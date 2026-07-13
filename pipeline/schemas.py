@@ -5,6 +5,9 @@ from pydantic import BaseModel
 
 class ParsedProblem(BaseModel):
     goal: str
+    task_type: str  # e.g. tabular regression, image classification, text normalization
+    evaluation_metric: str
+    target_variable: str
     framing_type: Literal["causal", "predictive", "descriptive", "ambiguous"]
     constraints: list[str]
 
