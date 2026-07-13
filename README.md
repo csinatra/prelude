@@ -30,6 +30,46 @@ MLE-bench competition begins. Pipeline runs *outside* the MLE-bench container
 to comply with the rule against external LLM API calls during competition
 execution.
 
+## Corpus and retrieval
+
+Each stage makes one directed retrieval call (k=5) against a local ChromaDB
+corpus (`data/chroma/`, gitignored), embedded with Voyage `voyage-code-3`
+(documents and queries — one model keeps the embedding space consistent).
+Condition B will use the same corpus with a single flat k=20 retrieval.
+
+Two collections:
+
+| Collection | Contents | Queried by |
+|---|---|---|
+| `competition_metadata` | Code4ML `competitions.csv` descriptions (1,156 competitions) + mle-bench `description.md` for the Lite 22 | parse |
+| `practitioner_knowledge` | Code4ML code blocks — already cell-level chunks, tagged with competition slug and Kaggle score | surface, flag, advise |
+
+**Leave-one-out:** every retrieval carries
+`{"competition_id": {"$ne": current_competition_id}}`, enforced inside
+`pipeline/retriever.py` — the pipeline can never see the evaluated
+competition's own artifacts. Code4ML covers 15 of the Lite 22; the other 7
+have descriptions only (from mle-bench). Under leave-one-out this doesn't
+change eval validity — every competition retrieves only from *other*
+competitions — but the 15 covered ones are the test cases where the filter
+does real work.
+
+**Note on sources:** the implementation brief's Source 1 (MLEModernizer,
+zenodo 15022707) ships as a single 107 GB tar.gz and is deferred to the cloud
+box. Code4ML's code-block CSVs (~1.4 GB) fill the practitioner-knowledge role
+for the dev corpus.
+
+Build the corpus (dev subset — Lite 22 code blocks only):
+
+```bash
+python -m ingest.download          # Code4ML CSVs (~1.4 GB) + mle-bench descriptions
+python -m ingest.ingest_metadata   # → competition_metadata collection
+python -m ingest.ingest_notebooks  # → practitioner_knowledge collection
+```
+
+The similarity threshold (`SIMILARITY_THRESHOLD` env var) is deliberately
+unset — to be calibrated against the real corpus on 5–10 dev competitions
+before eval runs.
+
 ## Prior art
 
 - **MLE-bench** (OpenAI, ICLR 2025) — evaluation infrastructure. <https://github.com/openai/mle-bench>
@@ -42,6 +82,8 @@ execution.
 - LangGraph — pipeline orchestration
 - LangSmith — observability and evaluation
 - Anthropic API — Sonnet for evaluation runs, Haiku for development iteration
+- ChromaDB — local persistent vector store (two collections, cosine)
+- Voyage AI — `voyage-code-3` embeddings for ingestion and queries
 - Ollama — optional local backend for free, offline wiring smoke tests (never eval runs)
 - AIDE — MLE-bench execution layer
 - Python 3.12 via `uv`
@@ -73,9 +115,9 @@ Three networked containers in cloud evaluation:
 brew install uv
 uv venv --python 3.12
 source .venv/bin/activate
-uv pip install langgraph langsmith anthropic python-dotenv pytest
-# create .env with ANTHROPIC_API_KEY, LANGSMITH_API_KEY, LANGSMITH_TRACING_V2=true,
-# LANGSMITH_PROJECT=spec-pipeline-dev
+uv pip install langgraph langsmith anthropic python-dotenv pytest requests chromadb voyageai pandas
+# create .env with ANTHROPIC_API_KEY, VOYAGE_API_KEY, LANGSMITH_API_KEY,
+# LANGSMITH_TRACING_V2=true, LANGSMITH_PROJECT=spec-pipeline-dev
 ```
 
 ## Run the toy pipeline
@@ -98,13 +140,17 @@ flag_assumptions -> advise_approach`, see [Pipeline](#pipeline--four-stages-with
 above). Output is tailored for an ML-literate reader — an experienced
 AI/ML engineer, not a general audience.
 
+Requires the corpus to be built first (see [Corpus and retrieval](#corpus-and-retrieval)).
+Pass `competition_id` (Kaggle slug) so leave-one-out retrieval excludes the
+competition's own artifacts.
+
 ```bash
 source .venv/bin/activate
 python -c "
 from dotenv import load_dotenv; load_dotenv()
 from pipeline.runner import run
 import json
-print(json.dumps(run(raw_problem='...'), indent=2))
+print(json.dumps(run(raw_problem='...', competition_id='spooky-author-identification'), indent=2))
 "
 ```
 
@@ -143,13 +189,18 @@ pipeline/
 ├── schemas.py      # ParsedProblem, SurfacedSignals, AssumptionFlags, Advice — Pydantic
 │                    #   stage-output models, enforced via native structured outputs
 ├── nodes.py         # parse_problem, surface_signals, flag_assumptions, advise_approach
-├── graph.py          # build_graph() — wires the four nodes
-├── runner.py          # run(raw_problem) — thin entry point over the compiled graph
-├── llm_client.py       # call_llm() — swappable Anthropic / Ollama backend, schema-constrained
-└── toy.py               # two-stage smoke pipeline (understand -> advise), Anthropic-only
+│                     #   — one retrieval call per stage
+├── graph.py           # build_graph() — wires the four nodes
+├── runner.py           # run(raw_problem, competition_id) — entry point over the graph
+├── llm_client.py        # call_llm() — swappable Anthropic / Ollama backend, schema-constrained
+├── retriever.py          # retrieve() — single retrieval seam; leave-one-out enforced here
+├── embeddings.py          # embed() — voyage-code-3, single embedding seam
+└── toy.py                  # two-stage smoke pipeline (understand -> advise), Anthropic-only
 
-tests/       # pytest — unit + smoke; no real API calls (LLM calls are mocked)
+ingest/      # offline corpus build: download, chunking, two ingestion scripts
+tests/       # pytest — unit + smoke; no real API calls (LLM + retrieval mocked)
 notebooks/   # exploratory + analysis
+data/        # raw downloads + ChromaDB store (gitignored)
 results/     # eval outputs (gitignored)
 ```
 
@@ -161,7 +212,10 @@ pytest tests/ -v
 
 `tests/test_pipeline.py` covers the full pipeline: each node in isolation
 plus an end-to-end run through the graph, asserting `stage_trace` order and
-field population at each stage. `pipeline.nodes.call_llm` is monkeypatched
-with canned JSON responses — no network calls, so this passes with either
-backend configured. `tests/test_api.py` is the one exception — it makes a
+field population at each stage. `pipeline.nodes.call_llm` and
+`pipeline.nodes.retrieve` are monkeypatched — no network calls, so this
+passes with either backend configured. `tests/test_retriever.py` exercises
+the leave-one-out filter, similarity threshold, and k against a temp
+ChromaDB with fake embeddings; `tests/test_chunking.py` covers oversized
+code-block splitting. `tests/test_api.py` is the one exception — it makes a
 real Anthropic API call to confirm connectivity.

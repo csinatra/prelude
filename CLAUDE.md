@@ -51,6 +51,20 @@ pipeline stages, and prior art.
    key literal in any file. If you see one in code, replace it with
    `os.environ["..."]`.
 
+5. **Leave-one-out retrieval is a research-integrity invariant.** No
+   retrieval may return artifacts from the competition currently being
+   specified. The filter (`competition_id != current`) is enforced inside
+   `pipeline/retriever.py::retrieve()` — every node goes through that seam;
+   never query ChromaDB directly from a node. A code path that bypasses the
+   filter is solution leakage — flag it.
+
+6. **Retrieval informs, never bounds.** Stage prompts carry the shared
+   `RETRIEVAL_STANCE` (see `pipeline/nodes.py`): retrieved excerpts are
+   evidence of past practice to be weighed critically, not a limit on the
+   model's reasoning. Don't write prompts that restrict answers to corpus
+   content — uncritical adoption of provided knowledge is the AssistedDS
+   failure mode Condition C exists to beat.
+
 ## Behavioral guidelines (apply to every task)
 
 Adapted from [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills/blob/main/CLAUDE.md). Bias toward caution over speed; use judgment on trivial tasks.
@@ -98,16 +112,35 @@ pipeline/
 ├── toy.py             # two-stage smoke pipeline (understand → advise), Anthropic-only
 ├── state.py           # PipelineState TypedDict for the full four-stage chain
 ├── nodes.py           # parse_problem, surface_signals, flag_assumptions, advise_approach
-├── schemas.py         # ParsedProblem, SurfacedSignals, AssumptionFlags, Advice — Pydantic
-│                       #   stage-output contracts, enforced via native structured outputs
-├── llm_client.py       # call_llm() — swappable Anthropic / Ollama backend, schema-constrained
-├── runner.py           # run(raw_problem) — thin entry point over the compiled graph
-└── graph.py            # build_graph() that wires the four nodes
+│                       #   — one retrieve() call per stage + RETRIEVAL_STANCE
+├── schemas.py          # ParsedProblem, SurfacedSignals, AssumptionFlags, Advice — Pydantic
+│                        #   stage-output contracts, enforced via native structured outputs
+├── llm_client.py        # call_llm() — swappable Anthropic / Ollama backend, schema-constrained
+├── retriever.py          # retrieve() — single retrieval seam; leave-one-out enforced here
+├── embeddings.py          # embed() — voyage-code-3 for documents and queries, batched
+├── runner.py               # run(raw_problem, competition_id) — entry point over the graph
+└── graph.py                 # build_graph() that wires the four nodes
 
-tests/                 # pytest; no real API calls — LLM calls mocked via call_llm
+ingest/                # offline corpus build — never imported by eval-time pipeline code
+├── config.py          # sources, paths, collection names, Lite-22 list
+├── download.py        # Code4ML CSVs + mle-bench descriptions → data/raw/
+├── chunking.py        # cell-level chunks, 4096-char cap, blank-line splitting
+├── store.py           # Chroma write helper (cosine, explicit embeddings)
+├── ingest_metadata.py # → competition_metadata collection
+└── ingest_notebooks.py# → practitioner_knowledge collection
+
+tests/                 # pytest; no real API calls — call_llm + retrieve mocked
 notebooks/             # exploration, eval analysis
+data/                  # raw downloads + ChromaDB store — gitignored
 results/               # eval outputs — gitignored
 ```
+
+Corpus specifics (sources, collections, coverage caveats) live in
+[README.md](README.md#corpus-and-retrieval). Two operational notes for agents:
+the Code4ML `сode_blocks_*.csv` filenames on Zenodo start with a **Cyrillic
+"с"** (U+0441) — copy URLs from `ingest/config.py`, don't retype them; and the
+brief's MLEModernizer source is a single 107 GB tar.gz, deferred to the cloud
+box — don't try to download it locally.
 
 ## LangGraph patterns used in this repo
 
@@ -149,11 +182,21 @@ result = app.invoke(input={"problem_statement": "..."})
   native structured outputs — `messages.parse(output_format=...)` on
   Anthropic, JSON-schema `format` on Ollama. Verified end-to-end against
   both backends.
+- ✅ RAG layer built: `ingest/` package (Code4ML + mle-bench descriptions →
+  two ChromaDB collections), `pipeline/retriever.py` seam with leave-one-out
+  filter, one directed retrieval per stage wired into `pipeline/nodes.py`,
+  schemas/prompts refit for MLE-bench competition descriptions. Unit-tested
+  (retrieval + LLM mocked); voyage-code-3 verified live.
 
 **Next:**
-1. Draft the Condition B (unstructured/AssistedDS-style) baseline so there's
-   something to compare Condition C against.
-2. Build the MLE-bench eval harness that scores A/B/C and produces the
+1. Run the full dev-subset ingest (`ingest.download` → `ingest_metadata` →
+   `ingest_notebooks`), then a live four-stage run on a real Lite
+   competition — verify the LangSmith trace shows four filtered retrievals.
+2. Calibrate `SIMILARITY_THRESHOLD` on 5–10 dev competitions (Haiku),
+   documented in a notebook.
+3. Draft the Condition B (unstructured/AssistedDS-style) baseline —
+   single flat k=20 retrieval over the same corpus, one unstructured call.
+4. Build the MLE-bench eval harness that scores A/B/C and produces the
    writeup numbers.
 
 ## Out of scope (don't propose these unprompted)
