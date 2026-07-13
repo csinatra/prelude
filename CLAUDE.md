@@ -1,4 +1,4 @@
-# CLAUDE.md — spec-pipeline
+# CLAUDE.md — Prelude (spec-pipeline)
 
 > Read this before writing code in this repo. It overrides any default
 > behavior an agent might bring from training.

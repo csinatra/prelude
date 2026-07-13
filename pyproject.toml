@@ -1,7 +1,7 @@
 [project]
-name = "spec-pipeline"
+name = "prelude"
 version = "0.0.1"
-description = "Structured LLM reasoning pipeline for ML problem specification"
+description = "Prelude: structured problem specification before agentic execution begins"
 requires-python = ">=3.12"
 
 [tool.pytest.ini_options]

@@ -1,7 +1,7 @@
-# spec-pipeline
+# Prelude
 
-Structured LLM reasoning pipeline for ML problem specification. Research POC
-for an Anthropic Fellows Program application.
+Structured problem specification before agentic execution begins. Research
+POC for an Anthropic Fellows Program application.
 
 ## Research question
 
