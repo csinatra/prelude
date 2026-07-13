@@ -1,0 +1,9 @@
+[project]
+name = "spec-pipeline"
+version = "0.0.1"
+description = "Structured LLM reasoning pipeline for ML problem specification"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
