@@ -172,7 +172,7 @@ def advise_approach(state: PipelineState) -> dict:
             f"Code excerpts from similar competitions:\n{_format_docs(docs)}"
         ),
         response_model=Advice,
-        max_tokens=2048,
+        max_tokens=4096,
     )
     return {
         "recommended_approaches": parsed.recommended_approaches,
