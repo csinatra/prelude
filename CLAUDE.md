@@ -188,16 +188,23 @@ result = app.invoke(input={"problem_statement": "..."})
   schemas/prompts refit for MLE-bench competition descriptions. Unit-tested
   (retrieval + LLM mocked); voyage-code-3 verified live.
 
+- ✅ Dev-subset corpus ingested and live-verified: 1,005 metadata chunks,
+  62,379 practitioner chunks; four-stage run on spooky-author-identification
+  (Haiku, 54s) with leave-one-out held in all four retrievals.
+- ✅ Condition B baselines (`pipeline/baseline.py`): shared flat k=20
+  retrieval (single query, both collections, merged by similarity); B1 = raw
+  excerpt block, no LLM pass; B2 = one freeform `call_llm_text` call with a
+  deliberately stance-free prompt. Live-smoked on spooky-author.
+
 **Next:**
-1. Run the full dev-subset ingest (`ingest.download` → `ingest_metadata` →
-   `ingest_notebooks`), then a live four-stage run on a real Lite
-   competition — verify the LangSmith trace shows four filtered retrievals.
-2. Calibrate `SIMILARITY_THRESHOLD` on 5–10 dev competitions (Haiku),
-   documented in a notebook.
-3. Draft the Condition B (unstructured/AssistedDS-style) baseline —
-   single flat k=20 retrieval over the same corpus, one unstructured call.
-4. Build the MLE-bench eval harness that scores A/B/C and produces the
-   writeup numbers.
+1. Calibrate `SIMILARITY_THRESHOLD` on 5–10 dev competitions (Haiku),
+   documented in a notebook. Note: observed good-match similarities run
+   0.48–0.66 — sweep ~0.45–0.70, not the brief's 0.65–0.85.
+2. Build the MLE-bench eval harness that scores A/B/C and produces the
+   writeup numbers (includes results/runs.jsonl registry + spec renderer).
+3. Consider expanding practitioner_knowledge beyond the Lite-22 slice
+   (Code4ML has 2.74M blocks; the slice is ~5%) — biggest retrieval-quality
+   lever before eval runs.
 
 ## Out of scope (don't propose these unprompted)
 

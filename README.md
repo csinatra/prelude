@@ -35,7 +35,15 @@ execution.
 Each stage makes one directed retrieval call (k=5) against a local ChromaDB
 corpus (`data/chroma/`, gitignored), embedded with Voyage `voyage-code-3`
 (documents and queries — one model keeps the embedding space consistent).
-Condition B will use the same corpus with a single flat k=20 retrieval.
+
+Condition B (`pipeline/baseline.py`) uses the same corpus, retriever, and
+leave-one-out filter with one *flat* retrieval — a single query (the raw
+description) against both collections, merged to top-20 by similarity — in
+two variants: **B1** injects the raw excerpt block into AIDE (literal
+AssistedDS replication, no LLM pass); **B2** adds one freeform, schema-less
+LLM call (controls for LLM preprocessing, so C's advantage is attributable
+to structure specifically). Which variant anchors the headline table is an
+eval-time decision.
 
 Two collections:
 
