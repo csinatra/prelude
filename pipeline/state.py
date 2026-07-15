@@ -13,10 +13,8 @@ class PipelineState(TypedDict, total=False):
     available_signals: list[str]
     desired_signals: list[str]
     prior_work: list[str]
-    assumption_flags: list[str]
-    recommended_approaches: list[str]
-    tradeoffs: list[str]
-    failure_modes: list[str]
+    assumption_flags: list[dict]  # SpecificationFlag dumps
+    recommendations: list[dict]  # Recommendation dumps, addresses_flags -> assumption_flags indices
     # RetrievedDoc dumps per stage — kept in state so every trace shows exactly
     # which corpus documents fed each stage.
     retrieved_parse: list[dict]

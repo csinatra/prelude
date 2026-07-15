@@ -3,6 +3,10 @@
 Structured problem specification before agentic execution begins. Research
 POC for an Anthropic Fellows Program application.
 
+> **Status (2026-07-14):** pipeline architecture and experimental design
+> complete (B1 / B2 / C1 / C2, two-level retrieval, mechanistic-analysis
+> scaffold). **Evaluation runs not yet executed.**
+
 ## Research question
 
 Does structured reasoning over retrieved organizational knowledge improve ML
@@ -10,13 +14,19 @@ problem specification quality and downstream agent performance — measured
 against MLE-bench baselines — beyond what unstructured knowledge provision
 achieves?
 
-## Three-condition evaluation
+## Conditions
 
-| Condition | Description | Source |
-|-----------|-------------|--------|
-| A | MLE-bench baseline, no specification assistance | Published, cited not run |
-| B | Unstructured knowledge provision | Replicates AssistedDS approach |
-| C | Structured specification reasoning pipeline | Primary contribution |
+A 2 (retrieval: flat vs staged) × 3 (synthesis: none / freeform /
+structured-critical) design — full rationale in
+[docs/RESEARCH_DESIGN.md](docs/RESEARCH_DESIGN.md):
+
+| Condition | Retrieval | Synthesis | Module |
+|-----------|-----------|-----------|--------|
+| A | none | none | published MLE-bench baseline, cited not run |
+| B1 | flat, single query | none — raw context block | `pipeline/baseline.py` |
+| B2 | flat, single query | freeform, stance-free | `pipeline/baseline.py` |
+| C1 | staged, 4 directed queries | freeform, stance-free (pilot condition) | `pipeline/c1.py` |
+| C2 | staged, 4 directed queries | structured schemas + critical stance | `pipeline/runner.py` |
 
 ## Pipeline — four stages with explicit intermediate outputs
 
@@ -32,25 +42,30 @@ execution.
 
 ## Corpus and retrieval
 
-Each stage makes one directed retrieval call (k=5) against a local ChromaDB
-corpus (`data/chroma/`, gitignored), embedded with Voyage `voyage-code-3`
-(documents and queries — one model keeps the embedding space consistent).
+All corpus access goes through two seams in `pipeline/retriever.py`, both
+enforcing leave-one-out, over a local ChromaDB store (`data/chroma/`,
+gitignored) embedded with Voyage `voyage-code-3`:
 
-Condition B (`pipeline/baseline.py`) uses the same corpus, retriever, and
-leave-one-out filter with one *flat* retrieval — a single query (the raw
-description) against both collections, merged to top-20 by similarity — in
-two variants: **B1** injects the raw excerpt block into AIDE (literal
-AssistedDS replication, no LLM pass); **B2** adds one freeform, schema-less
-LLM call (controls for LLM preprocessing, so C's advantage is attributable
-to structure specifically). Which variant anchors the headline table is an
-eval-time decision.
+- `retrieve()` — flat chunk retrieval. Used for `competition_metadata` (no
+  notebook structure) by every condition.
+- `retrieve_two_level()` — notebook-then-chunk "cards": a
+  `notebook_summaries` collection (one LLM abstract per notebook) surfaces
+  the top-N notebooks, then top-M chunks are pulled from within each. This
+  is the practitioner-knowledge unit for **all** conditions — B calls it
+  once with a flat query, C1/C2 call it per stage with directed queries —
+  so the flat-vs-staged comparison isolates query structure, not retrieval
+  granularity.
+
+Budgets are parity-matched knobs in `pipeline/config.py` (B's flat budget =
+staged conditions' total).
 
 Two collections:
 
 | Collection | Contents | Queried by |
 |---|---|---|
-| `competition_metadata` | Code4ML `competitions.csv` descriptions (1,156 competitions) + mle-bench `description.md` for the Lite 22 | parse |
-| `practitioner_knowledge` | Code4ML code blocks — already cell-level chunks, tagged with competition slug and Kaggle score | surface, flag, advise |
+| `competition_metadata` | Code4ML `competitions.csv` descriptions (1,156 competitions) + mle-bench `description.md` for the Lite 22 | parse (C1/C2), B flat |
+| `notebook_summaries` | one LLM abstract per unique notebook (level one of two-level retrieval) | all practitioner-knowledge access |
+| `practitioner_knowledge` | Code4ML code blocks — already cell-level chunks, tagged with competition slug, notebook id, and Kaggle score | level two, restricted to surfaced notebooks |
 
 **Leave-one-out:** every retrieval carries
 `{"competition_id": {"$ne": current_competition_id}}`, enforced inside
@@ -69,9 +84,10 @@ for the dev corpus.
 Build the corpus (dev subset — Lite 22 code blocks only):
 
 ```bash
-python -m ingest.download          # Code4ML CSVs (~1.4 GB) + mle-bench descriptions
-python -m ingest.ingest_metadata   # → competition_metadata collection
-python -m ingest.ingest_notebooks  # → practitioner_knowledge collection
+python -m ingest.download           # Code4ML CSVs (~1.4 GB) + mle-bench descriptions
+python -m ingest.ingest_metadata    # → competition_metadata collection
+python -m ingest.ingest_notebooks   # → practitioner_knowledge collection
+python -m ingest.ingest_summaries   # → notebook_summaries (one LLM abstract per notebook; resumable)
 ```
 
 The similarity threshold (`SIMILARITY_THRESHOLD` env var) is deliberately
@@ -156,11 +172,14 @@ competition's own artifacts.
 source .venv/bin/activate
 python -c "
 from dotenv import load_dotenv; load_dotenv()
-from pipeline.runner import run
+from pipeline.runner import run_c2
 import json
-print(json.dumps(run(raw_problem='...', competition_id='spooky-author-identification'), indent=2))
+print(json.dumps(run_c2(raw_problem='...', competition_id='spooky-author-identification'), indent=2))
 "
 ```
+
+Other conditions: `pipeline.baseline.run_b1` / `run_b2` and
+`pipeline.c1.run_c1` take the same keyword arguments.
 
 ### Configurable backends
 
@@ -193,23 +212,27 @@ Ollama to validate the graph runs end-to-end, not to judge output quality.
 
 ```
 pipeline/
-├── state.py       # PipelineState TypedDict — the contract between stages
-├── schemas.py      # ParsedProblem, SurfacedSignals, AssumptionFlags, Advice — Pydantic
-│                    #   stage-output models, enforced via native structured outputs
-├── nodes.py         # parse_problem, surface_signals, flag_assumptions, advise_approach
-│                     #   — one retrieval call per stage
-├── graph.py           # build_graph() — wires the four nodes
-├── runner.py           # run(raw_problem, competition_id) — entry point over the graph
-├── llm_client.py        # call_llm() — swappable Anthropic / Ollama backend, schema-constrained
-├── retriever.py          # retrieve() — single retrieval seam; leave-one-out enforced here
-├── embeddings.py          # embed() — voyage-code-3, single embedding seam
-└── toy.py                  # two-stage smoke pipeline (understand -> advise), Anthropic-only
+├── config.py      # central tunables: budgets, collections, threshold (parity invariant)
+├── state.py        # PipelineState TypedDict — the contract between stages
+├── schemas.py       # ParsedProblem, SurfacedSignals, SpecificationFlag/AssumptionFlags,
+│                     #   Recommendation/Advice — Pydantic stage contracts
+├── nodes.py           # four C2 stage nodes + shared query builders
+├── graph.py            # build_graph() — wires the four nodes
+├── runner.py            # run_c2(raw_problem, competition_id) — Condition C2 entry point
+├── c1.py                 # run_c1() — staged retrieval + freeform synthesis (both artifacts)
+├── baseline.py            # run_b1()/run_b2() — flat retrieval conditions
+├── llm_client.py           # call_llm() schema-constrained + call_llm_text() freeform
+├── retriever.py             # retrieve() + retrieve_two_level() — leave-one-out enforced here
+├── embeddings.py             # embed() — voyage-code-3, single embedding seam
+└── toy.py                     # two-stage smoke pipeline, Anthropic-only
 
-ingest/      # offline corpus build: download, chunking, two ingestion scripts
+ingest/      # offline corpus build: download, chunking, three ingestion scripts
+analysis/    # post-run scaffold: flag judge (frozen rubric), artifact preservation
+docs/        # RESEARCH_DESIGN.md, JUDGE_RUBRIC.md (frozen), COST_ESTIMATE.md
 tests/       # pytest — unit + smoke; no real API calls (LLM + retrieval mocked)
 notebooks/   # exploratory + analysis
 data/        # raw downloads + ChromaDB store (gitignored)
-results/     # eval outputs (gitignored)
+results/     # run artifacts keyed {competition}_{condition}_{seed} (gitignored during dev)
 ```
 
 ## Tests

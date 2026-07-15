@@ -36,8 +36,8 @@ def call_llm(*, system: str, user: str, response_model: type[ModelT], max_tokens
 def call_llm_text(*, system: str, user: str, max_tokens: int = 4096) -> str:
     """Call the configured backend with no output schema. Returns raw text.
 
-    Used by the Condition B2 baseline, which must be free of any imposed
-    structure — including a JSON constraint.
+    Used by the B2/C1 freeform synthesis (which must be free of any imposed
+    structure, including a JSON constraint) and by notebook-summary ingestion.
     """
     if LLM_PROVIDER == "ollama":
         response = requests.post(

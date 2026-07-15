@@ -1,14 +1,17 @@
+from pipeline.config import (
+    COMPETITION_METADATA,
+    PRACTITIONER_KNOWLEDGE,
+    RETRIEVAL_K,
+    STAGE_CHUNKS_PER_NOTEBOOK,
+    STAGE_N_NOTEBOOKS,
+)
 from pipeline.llm_client import call_llm
-from pipeline.retriever import RetrievedDoc, retrieve
+from pipeline.retriever import RetrievedDoc, retrieve, retrieve_two_level
 from pipeline.schemas import Advice, AssumptionFlags, ParsedProblem, SurfacedSignals
 from pipeline.state import PipelineState
 
-RETRIEVAL_K = 5
-COMPETITION_METADATA = "competition_metadata"
-PRACTITIONER_KNOWLEDGE = "practitioner_knowledge"
-
 # Shared stance on retrieved context, appended to every stage's system prompt.
-# Condition C tests *critical* integration of retrieved knowledge (AssistedDS
+# Condition C2 tests *critical* integration of retrieved knowledge (AssistedDS
 # showed LLMs adopt provided knowledge uncritically) — retrieval must inform
 # reasoning, never bound it.
 RETRIEVAL_STANCE = (
@@ -19,16 +22,42 @@ RETRIEVAL_STANCE = (
 )
 
 
+def surface_query(*, task_type: str, evaluation_metric: str, goal: str) -> str:
+    return f"{task_type} {evaluation_metric} {goal}"
+
+
+def flag_query(*, task_type: str, evaluation_metric: str, goal: str) -> str:
+    return f"validation leakage overfitting pitfalls {task_type} {evaluation_metric} {goal}"
+
+
+def advise_query(*, task_type: str, evaluation_metric: str, goal: str) -> str:
+    return f"model architecture training approach {task_type} {evaluation_metric} {goal}"
+
+
 def _format_docs(docs: list[RetrievedDoc]) -> str:
     if not docs:
         return "(no relevant documents retrieved)"
-    return "\n\n".join(
-        f"[{doc.source_type} | competition: {doc.competition_id}]\n{doc.text}" for doc in docs
-    )
+    formatted = []
+    for doc in docs:
+        notebook = f" | notebook: {doc.kaggle_id}" if doc.kaggle_id is not None else ""
+        formatted.append(
+            f"[{doc.doc_id} | {doc.source_type} | competition: {doc.competition_id}{notebook}]\n"
+            f"{doc.text}"
+        )
+    return "\n\n".join(formatted)
 
 
 def _dump(docs: list[RetrievedDoc]) -> list[dict]:
     return [doc.model_dump() for doc in docs]
+
+
+def _format_flags(flags: list[dict]) -> str:
+    if not flags:
+        return "(no flags raised)"
+    return "\n".join(
+        f"[{index}] {flag['category']} ({flag['confidence']} confidence): {flag['explanation']}"
+        for index, flag in enumerate(flags)
+    )
 
 
 def parse_problem(state: PipelineState) -> dict:
@@ -67,11 +96,15 @@ def parse_problem(state: PipelineState) -> dict:
 
 def surface_signals(state: PipelineState) -> dict:
     goal = state.get("parsed_goal", state["raw_problem"])
-    docs = retrieve(
-        query=f"{state.get('task_type', '')} {state.get('evaluation_metric', '')} {goal}",
-        collection=PRACTITIONER_KNOWLEDGE,
+    docs = retrieve_two_level(
+        query=surface_query(
+            task_type=state.get("task_type", ""),
+            evaluation_metric=state.get("evaluation_metric", ""),
+            goal=goal,
+        ),
         exclude_competition=state.get("competition_id", ""),
-        k=RETRIEVAL_K,
+        n_notebooks=STAGE_N_NOTEBOOKS,
+        chunks_per_notebook=STAGE_CHUNKS_PER_NOTEBOOK,
     )
     parsed = call_llm(
         system=(
@@ -101,23 +134,29 @@ def surface_signals(state: PipelineState) -> dict:
 
 def flag_assumptions(state: PipelineState) -> dict:
     goal = state.get("parsed_goal", state["raw_problem"])
-    docs = retrieve(
-        query=(
-            f"validation leakage overfitting pitfalls {state.get('task_type', '')} "
-            f"{state.get('evaluation_metric', '')} {goal}"
+    docs = retrieve_two_level(
+        query=flag_query(
+            task_type=state.get("task_type", ""),
+            evaluation_metric=state.get("evaluation_metric", ""),
+            goal=goal,
         ),
-        collection=PRACTITIONER_KNOWLEDGE,
         exclude_competition=state.get("competition_id", ""),
-        k=RETRIEVAL_K,
+        n_notebooks=STAGE_N_NOTEBOOKS,
+        chunks_per_notebook=STAGE_CHUNKS_PER_NOTEBOOK,
     )
     parsed = call_llm(
         system=(
             "You are an ML assumptions auditor briefing an experienced ML/AI engineer — skip "
             "definitions, go straight to the specific risk. Given a problem framing and its "
-            "available/desired signals, identify the most likely assumption violations. Focus "
-            "on: IID violations, exposure/selection bias, outcome measurement gaps, attribution "
-            "ambiguity, sequential/temporal dependencies, train/test leakage, and resource "
-            "constraints. Each flag should name the concrete mechanism, not a generic category."
+            "available/desired signals, identify the most likely assumption violations. Each "
+            "flag must name the concrete mechanism, not a generic category, and carry: a "
+            "category (iid_violation, exposure_bias, outcome_measurement_gap, "
+            "delivery_attribution_failure, sequential_dependency, multi_touch_attribution, "
+            "resource_constraint_violation, or other), your confidence (low/medium/high), and "
+            "evidence_doc_ids — the bracketed IDs of the specific retrieved documents that "
+            "informed that flag. Cite a document only if it genuinely shaped the flag; a flag "
+            "drawn from your general knowledge should honestly report an empty "
+            "evidence_doc_ids list — that is a valid and expected answer, not a failure."
             + RETRIEVAL_STANCE
         ),
         user=(
@@ -132,7 +171,7 @@ def flag_assumptions(state: PipelineState) -> dict:
         response_model=AssumptionFlags,
     )
     return {
-        "assumption_flags": parsed.assumption_flags,
+        "assumption_flags": [flag.model_dump() for flag in parsed.flags],
         "retrieved_flag": _dump(docs),
         "stage_trace": state["stage_trace"] + ["flag_assumptions"],
     }
@@ -140,24 +179,27 @@ def flag_assumptions(state: PipelineState) -> dict:
 
 def advise_approach(state: PipelineState) -> dict:
     goal = state.get("parsed_goal", state["raw_problem"])
-    docs = retrieve(
-        query=(
-            f"model architecture training approach {state.get('task_type', '')} "
-            f"{state.get('evaluation_metric', '')} {goal}"
+    flags = state.get("assumption_flags", [])
+    docs = retrieve_two_level(
+        query=advise_query(
+            task_type=state.get("task_type", ""),
+            evaluation_metric=state.get("evaluation_metric", ""),
+            goal=goal,
         ),
-        collection=PRACTITIONER_KNOWLEDGE,
         exclude_competition=state.get("competition_id", ""),
-        k=RETRIEVAL_K,
+        n_notebooks=STAGE_N_NOTEBOOKS,
+        chunks_per_notebook=STAGE_CHUNKS_PER_NOTEBOOK,
     )
     parsed = call_llm(
         system=(
             "You are an ML modeling advisor briefing an experienced ML/AI engineer as a technical "
             "peer. Be direct and specific — name architectures, loss formulations, or estimators "
             "rather than generic categories, and skip explanations of concepts a practitioner "
-            "already knows. Given the problem framing, surfaced signals, prior work, and flagged "
-            "assumption risks, recommend concrete modeling approaches optimized for the stated "
-            "evaluation metric, the key tradeoffs between them, and the most likely failure modes "
-            "given the flagged risks." + RETRIEVAL_STANCE
+            "already knows. Recommend concrete modeling approaches optimized for the stated "
+            "evaluation metric. Each recommendation carries its own tradeoff, its most likely "
+            "failure mode given the flagged risks, and addresses_flags — the bracketed indices "
+            "of the assumption flags it responds to (empty if it addresses none directly)."
+            + RETRIEVAL_STANCE
         ),
         user=(
             f"Task type: {state.get('task_type', 'unknown')}\n"
@@ -168,16 +210,14 @@ def advise_approach(state: PipelineState) -> dict:
             f"Available signals: {state.get('available_signals', [])}\n"
             f"Desired signals: {state.get('desired_signals', [])}\n"
             f"Prior work: {state.get('prior_work', [])}\n"
-            f"Assumption flags: {state.get('assumption_flags', [])}\n\n"
+            f"Assumption flags (indexed):\n{_format_flags(flags)}\n\n"
             f"Code excerpts from similar competitions:\n{_format_docs(docs)}"
         ),
         response_model=Advice,
         max_tokens=4096,
     )
     return {
-        "recommended_approaches": parsed.recommended_approaches,
-        "tradeoffs": parsed.tradeoffs,
-        "failure_modes": parsed.failure_modes,
+        "recommendations": [rec.model_dump() for rec in parsed.recommendations],
         "retrieved_advise": _dump(docs),
         "stage_trace": state["stage_trace"] + ["advise_approach"],
     }

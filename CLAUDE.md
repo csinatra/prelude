@@ -58,12 +58,17 @@ pipeline stages, and prior art.
    never query ChromaDB directly from a node. A code path that bypasses the
    filter is solution leakage — flag it.
 
-6. **Retrieval informs, never bounds.** Stage prompts carry the shared
-   `RETRIEVAL_STANCE` (see `pipeline/nodes.py`): retrieved excerpts are
-   evidence of past practice to be weighed critically, not a limit on the
-   model's reasoning. Don't write prompts that restrict answers to corpus
-   content — uncritical adoption of provided knowledge is the AssistedDS
-   failure mode Condition C exists to beat.
+6. **Retrieval informs, never bounds — in C2 only.** C2's stage prompts
+   carry the shared `RETRIEVAL_STANCE` (see `pipeline/nodes.py`): retrieved
+   excerpts are evidence to be weighed critically, not a limit on
+   reasoning. B2 and C1's freeform synthesis is deliberately stance-free —
+   uncritical adoption is the AssistedDS failure mode those conditions must
+   be free to exhibit. Don't "fix" their prompts by adding the stance, and
+   don't restrict any condition's answers to corpus content.
+
+7. **The judge rubric is frozen.** `docs/JUDGE_RUBRIC.md` was written before
+   any evaluation run and must not be revised after seeing results —
+   amendments require a dated entry and re-judging of prior runs.
 
 ## Behavioral guidelines (apply to every task)
 
@@ -109,17 +114,22 @@ Strong success criteria let you loop independently. "Make it work" doesn't.
 ```
 pipeline/
 ├── __init__.py
-├── toy.py             # two-stage smoke pipeline (understand → advise), Anthropic-only
-├── state.py           # PipelineState TypedDict for the full four-stage chain
-├── nodes.py           # parse_problem, surface_signals, flag_assumptions, advise_approach
-│                       #   — one retrieve() call per stage + RETRIEVAL_STANCE
-├── schemas.py          # ParsedProblem, SurfacedSignals, AssumptionFlags, Advice — Pydantic
-│                        #   stage-output contracts, enforced via native structured outputs
-├── llm_client.py        # call_llm() — swappable Anthropic / Ollama backend, schema-constrained
-├── retriever.py          # retrieve() — single retrieval seam; leave-one-out enforced here
-├── embeddings.py          # embed() — voyage-code-3 for documents and queries, batched
-├── runner.py               # run(raw_problem, competition_id) — entry point over the graph
-└── graph.py                 # build_graph() that wires the four nodes
+├── config.py          # central tunables: budgets, collections, threshold.
+│                       #   PARITY INVARIANT: B's flat budget == staged total
+├── toy.py              # two-stage smoke pipeline (understand → advise), Anthropic-only
+├── state.py             # PipelineState TypedDict for the full four-stage chain
+├── nodes.py              # four C2 stage nodes + shared query builders (surface_query etc.)
+├── schemas.py             # Pydantic stage contracts incl. SpecificationFlag (categorized,
+│                           #   evidence-cited, confidence-rated) and Recommendation
+│                           #   (approach/tradeoff/failure_mode linked to flags by index)
+├── llm_client.py           # call_llm() schema-constrained + call_llm_text() freeform
+├── retriever.py             # retrieve() flat + retrieve_two_level() notebook-then-chunk;
+│                             #   leave-one-out enforced in BOTH
+├── embeddings.py             # embed() — voyage-code-3 for documents and queries, batched
+├── baseline.py                # Condition B: run_b1() raw block, run_b2() freeform pass
+├── c1.py                       # Condition C1: staged retrieval + B2's freeform synthesis
+├── runner.py                    # run_c2() — Condition C2 entry point over the graph
+└── graph.py                      # build_graph() that wires the four nodes
 
 ingest/                # offline corpus build — never imported by eval-time pipeline code
 ├── config.py          # sources, paths, collection names, Lite-22 list
@@ -127,12 +137,18 @@ ingest/                # offline corpus build — never imported by eval-time pi
 ├── chunking.py        # cell-level chunks, 4096-char cap, blank-line splitting
 ├── store.py           # Chroma write helper (cosine, explicit embeddings)
 ├── ingest_metadata.py # → competition_metadata collection
-└── ingest_notebooks.py# → practitioner_knowledge collection
+├── ingest_notebooks.py# → practitioner_knowledge collection
+└── ingest_summaries.py# → notebook_summaries (one LLM abstract/notebook; resumable)
 
-tests/                 # pytest; no real API calls — call_llm + retrieve mocked
+analysis/              # post-run mechanistic analysis (scaffold until runs exist)
+├── judge.py           # per-flag judging vs docs/JUDGE_RUBRIC.md + per-category aggregation
+└── artifacts.py       # results/{comp}_{condition}_{seed}/ preservation layout
+
+docs/                  # RESEARCH_DESIGN.md, JUDGE_RUBRIC.md (FROZEN), COST_ESTIMATE.md
+tests/                 # pytest; no real API calls — call_llm + both retrieval seams mocked
 notebooks/             # exploration, eval analysis
 data/                  # raw downloads + ChromaDB store — gitignored
-results/               # eval outputs — gitignored
+results/               # run artifacts — gitignored during dev, committed for final evals
 ```
 
 Corpus specifics (sources, collections, coverage caveats) live in
@@ -191,20 +207,25 @@ result = app.invoke(input={"problem_statement": "..."})
 - ✅ Dev-subset corpus ingested and live-verified: 1,005 metadata chunks,
   62,379 practitioner chunks; four-stage run on spooky-author-identification
   (Haiku, 54s) with leave-one-out held in all four retrievals.
-- ✅ Condition B baselines (`pipeline/baseline.py`): shared flat k=20
-  retrieval (single query, both collections, merged by similarity); B1 = raw
-  excerpt block, no LLM pass; B2 = one freeform `call_llm_text` call with a
-  deliberately stance-free prompt. Live-smoked on spooky-author.
+- ✅ Design-review refactor: conditions renamed/extended to B1/B2/C1/C2
+  (see docs/RESEARCH_DESIGN.md); SpecificationFlag/Recommendation schemas
+  with evidence citation and flag linkage; two-level (notebook→chunk)
+  retrieval as the shared practitioner-knowledge unit; analysis scaffold
+  (frozen judge rubric, artifact preservation); pipeline/config.py central
+  tunables. Unit-tested; NOT yet live-verified (needs notebook_summaries
+  ingestion).
 
 **Next:**
-1. Calibrate `SIMILARITY_THRESHOLD` on 5–10 dev competitions (Haiku),
-   documented in a notebook. Note: observed good-match similarities run
-   0.48–0.66 — sweep ~0.45–0.70, not the brief's 0.65–0.85.
-2. Build the MLE-bench eval harness that scores A/B/C and produces the
-   writeup numbers (includes results/runs.jsonl registry + spec renderer).
-3. Consider expanding practitioner_knowledge beyond the Lite-22 slice
-   (Code4ML has 2.74M blocks; the slice is ~5%) — biggest retrieval-quality
-   lever before eval runs.
+1. Run `ingest.ingest_summaries` (thousands of short LLM calls, resumable),
+   then live-verify all four run conditions on spooky-author-identification.
+2. Calibrate `SIMILARITY_THRESHOLD` + retrieval budgets on 5–10 dev
+   competitions. Note: observed good-match similarities run 0.48–0.66 —
+   sweep ~0.45–0.70, not the brief's 0.65–0.85.
+3. Build the MLE-bench eval harness that scores A/B1/B2/C1/C2 (C1 =
+   pilot subset default) and produces the writeup numbers (runs.jsonl
+   registry + spec renderer + analysis/artifacts.py integration).
+4. Expand practitioner_knowledge beyond the Lite-22 slice before production
+   runs (Code4ML full + MLEModernizer on the cloud box).
 
 ## Out of scope (don't propose these unprompted)
 
