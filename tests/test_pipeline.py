@@ -9,7 +9,7 @@ import pytest
 from pipeline import nodes
 from pipeline.graph import build_graph
 from pipeline.retriever import RetrievedDoc
-from pipeline.runner import run_c2
+from pipeline.condition_c2 import run_c2
 from pipeline.state import PipelineState
 
 FAKE_META_DOC = RetrievedDoc(

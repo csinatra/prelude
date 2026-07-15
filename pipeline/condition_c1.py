@@ -17,7 +17,7 @@ Design notes:
   which artifact is injected per run.
 """
 
-from pipeline.baseline import FREEFORM_SYSTEM
+from pipeline.condition_b import FREEFORM_SYSTEM
 from pipeline.config import STAGE_CHUNKS_PER_NOTEBOOK, STAGE_N_NOTEBOOKS
 from pipeline.llm_client import call_llm_text
 from pipeline.nodes import (

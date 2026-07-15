@@ -2,7 +2,7 @@
 
 import pytest
 
-from pipeline import baseline
+from pipeline import condition_b as baseline
 from pipeline.retriever import RetrievedDoc
 
 

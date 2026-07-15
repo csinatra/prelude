@@ -2,7 +2,7 @@
 
 import pytest
 
-from pipeline import c1
+from pipeline import condition_c1 as c1
 from pipeline.retriever import RetrievedDoc
 
 

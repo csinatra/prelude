@@ -126,9 +126,9 @@ pipeline/
 ├── retriever.py             # retrieve() flat + retrieve_two_level() notebook-then-chunk;
 │                             #   leave-one-out enforced in BOTH
 ├── embeddings.py             # embed() — voyage-code-3 for documents and queries, batched
-├── baseline.py                # Condition B: run_b1() raw block, run_b2() freeform pass
-├── c1.py                       # Condition C1: staged retrieval + B2's freeform synthesis
-├── runner.py                    # run_c2() — Condition C2 entry point over the graph
+├── condition_b.py             # Condition B: run_b1() raw block, run_b2() freeform pass
+├── condition_c1.py             # Condition C1: staged retrieval + B2 freeform synthesis
+├── condition_c2.py              # run_c2() — Condition C2 entry point over the graph
 └── graph.py                      # build_graph() that wires the four nodes
 
 ingest/                # offline corpus build — never imported by eval-time pipeline code
@@ -189,7 +189,7 @@ result = app.invoke(input={"problem_statement": "..."})
   and produces a LangSmith trace.
 - ✅ Real four-stage chain (`parse_problem → surface_signals →
   flag_assumptions → advise_approach`) built and wired in `pipeline/graph.py`,
-  runs end-to-end via `pipeline/runner.py`.
+  runs end-to-end via `pipeline/condition_c2.py`.
 - ✅ Backend is swappable (`LLM_PROVIDER=anthropic|ollama`) via
   `pipeline/llm_client.py`, verified against a local Ollama model.
 - ✅ Unit tests (`tests/test_pipeline.py`) cover each node plus a full run,

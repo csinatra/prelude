@@ -23,10 +23,10 @@ structured-critical) design — full rationale in
 | Condition | Retrieval | Synthesis | Module |
 |-----------|-----------|-----------|--------|
 | A | none | none | published MLE-bench baseline, cited not run |
-| B1 | flat, single query | none — raw context block | `pipeline/baseline.py` |
-| B2 | flat, single query | freeform, stance-free | `pipeline/baseline.py` |
-| C1 | staged, 4 directed queries | freeform, stance-free (pilot condition) | `pipeline/c1.py` |
-| C2 | staged, 4 directed queries | structured schemas + critical stance | `pipeline/runner.py` |
+| B1 | flat, single query | none — raw context block | `pipeline/condition_b.py` |
+| B2 | flat, single query | freeform, stance-free | `pipeline/condition_b.py` |
+| C1 | staged, 4 directed queries | freeform, stance-free (pilot condition) | `pipeline/condition_c1.py` |
+| C2 | staged, 4 directed queries | structured schemas + critical stance | `pipeline/condition_c2.py` |
 
 ## Pipeline — four stages with explicit intermediate outputs
 
@@ -172,14 +172,14 @@ competition's own artifacts.
 source .venv/bin/activate
 python -c "
 from dotenv import load_dotenv; load_dotenv()
-from pipeline.runner import run_c2
+from pipeline.condition_c2 import run_c2
 import json
 print(json.dumps(run_c2(raw_problem='...', competition_id='spooky-author-identification'), indent=2))
 "
 ```
 
-Other conditions: `pipeline.baseline.run_b1` / `run_b2` and
-`pipeline.c1.run_c1` take the same keyword arguments.
+Other conditions: `pipeline.condition_b.run_b1` / `run_b2` and
+`pipeline.condition_c1.run_c1` take the same keyword arguments.
 
 ### Configurable backends
 
@@ -198,7 +198,7 @@ code changes.
 # Local Ollama — requires `ollama serve` running and the model pulled
 ollama pull llama3.1:8b-instruct-q4_K_M
 LLM_PROVIDER=ollama OLLAMA_MODEL=llama3.1:8b-instruct-q4_K_M python -c "
-from pipeline.runner import run
+from pipeline.condition_c2 import run_c2 as run
 import json
 print(json.dumps(run(raw_problem='...'), indent=2))
 "
@@ -218,9 +218,9 @@ pipeline/
 │                     #   Recommendation/Advice — Pydantic stage contracts
 ├── nodes.py           # four C2 stage nodes + shared query builders
 ├── graph.py            # build_graph() — wires the four nodes
-├── runner.py            # run_c2(raw_problem, competition_id) — Condition C2 entry point
-├── c1.py                 # run_c1() — staged retrieval + freeform synthesis (both artifacts)
-├── baseline.py            # run_b1()/run_b2() — flat retrieval conditions
+├── condition_c2.py      # run_c2(raw_problem, competition_id) — Condition C2 entry point
+├── condition_c1.py       # run_c1() — staged retrieval + freeform synthesis (both artifacts)
+├── condition_b.py          # run_b1()/run_b2() — flat retrieval conditions
 ├── llm_client.py           # call_llm() schema-constrained + call_llm_text() freeform
 ├── retriever.py             # retrieve() + retrieve_two_level() — leave-one-out enforced here
 ├── embeddings.py             # embed() — voyage-code-3, single embedding seam
