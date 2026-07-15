@@ -138,4 +138,14 @@ def test_run_condition_end_to_end(tmp_path, monkeypatch):
     entry = runs["spooky-author-identification_B2_1"]
     assert entry["status"] == "spec_built"
     assert entry["spec_tokens"] == 42
+    assert entry["block_tokens"] == 42
+    assert entry["synthesis_tokens"] == 42
     assert entry["git_commit"]
+
+
+def test_spec_sections_split_composes_to_render():
+    for condition, output in [("B1", B1_OUTPUT), ("B2", B2_OUTPUT), ("C1", C1_OUTPUT), ("C2", C2_OUTPUT)]:
+        sections = renderer.spec_sections(condition=condition, output=output)
+        parts = [sections["context"]] + ([sections["synthesis"]] if sections["synthesis"] else [])
+        assert "\n\n".join(parts) + "\n" == renderer.render_spec(condition=condition, output=output)
+    assert renderer.spec_sections(condition="B1", output=B1_OUTPUT)["synthesis"] == ""

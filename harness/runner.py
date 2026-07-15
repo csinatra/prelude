@@ -19,7 +19,7 @@ from pathlib import Path
 
 from analysis.artifacts import _git_provenance, run_key, save_artifacts
 from harness.registry import append_run
-from harness.renderer import render_spec
+from harness.renderer import render_spec, spec_sections
 from pipeline.condition_b import run_b1, run_b2
 from pipeline.condition_c1 import run_c1
 from pipeline.condition_c2 import run_c2
@@ -72,6 +72,7 @@ def run_condition(*, competition_id: str, condition: str, seed: int) -> Path:
     output = CONDITION_RUNNERS[condition](
         raw_problem=raw_problem, competition_id=competition_id
     )
+    sections = spec_sections(condition=condition, output=output)
     spec_document = render_spec(condition=condition, output=output)
     run_dir = save_artifacts(
         competition_id=competition_id,
@@ -91,6 +92,10 @@ def run_condition(*, competition_id: str, condition: str, seed: int) -> Path:
             "spec_path": str(run_dir / "spec.md"),
             "spec_chars": len(spec_document),
             "spec_tokens": _count_tokens(text=spec_document),
+            "block_tokens": _count_tokens(text=sections["context"]),
+            "synthesis_tokens": _count_tokens(text=sections["synthesis"])
+            if sections["synthesis"]
+            else 0,
             **_git_provenance(),
             "llm_provider": os.environ.get("LLM_PROVIDER", "anthropic"),
             "model": os.environ.get("MODEL"),

@@ -71,11 +71,15 @@ def _render_c2_spec(output: dict) -> str:
     return "\n".join(lines)
 
 
-def render_spec(*, condition: str, output: dict) -> str:
-    """Render the injectable spec document for one condition run."""
-    if condition in ("B1", "B2"):
-        context_block = output["context_block"]
-    elif condition == "C1":
+def spec_sections(*, condition: str, output: dict) -> dict[str, str]:
+    """The spec's two parts: retrieved context vs synthesis artifact.
+
+    Kept separate so the harness can log their token counts individually —
+    the budget/attention confound analysis needs to distinguish "more
+    retrieved knowledge" from "structured restatement of the same knowledge"
+    (RESEARCH_DESIGN.md, threats to validity). synthesis is empty for B1.
+    """
+    if condition in ("B1", "B2", "C1"):
         context_block = output["context_block"]
     elif condition == "C2":
         context_block = merged_context_block(
@@ -84,9 +88,16 @@ def render_spec(*, condition: str, output: dict) -> str:
     else:
         raise ValueError(f"unknown condition: {condition}")
 
-    sections = [f"{CONTEXT_HEADER}\n\n{context_block}"]
+    synthesis = ""
     if condition in ("B2", "C1"):
-        sections.append(f"{ADVICE_HEADER}\n\n{output['advice']}")
+        synthesis = f"{ADVICE_HEADER}\n\n{output['advice']}"
     elif condition == "C2":
-        sections.append(_render_c2_spec(output))
-    return "\n\n".join(sections) + "\n"
+        synthesis = _render_c2_spec(output)
+    return {"context": f"{CONTEXT_HEADER}\n\n{context_block}", "synthesis": synthesis}
+
+
+def render_spec(*, condition: str, output: dict) -> str:
+    """Render the injectable spec document for one condition run."""
+    sections = spec_sections(condition=condition, output=output)
+    parts = [sections["context"]] + ([sections["synthesis"]] if sections["synthesis"] else [])
+    return "\n\n".join(parts) + "\n"
