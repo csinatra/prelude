@@ -33,6 +33,35 @@ def call_llm(*, system: str, user: str, response_model: type[ModelT], max_tokens
     return _call_anthropic(system=system, user=user, response_model=response_model, max_tokens=max_tokens)
 
 
+def call_llm_text(*, system: str, user: str, max_tokens: int = 4096) -> str:
+    """Call the configured backend with no output schema. Returns raw text.
+
+    Used by the Condition B2 baseline, which must be free of any imposed
+    structure — including a JSON constraint.
+    """
+    if LLM_PROVIDER == "ollama":
+        response = requests.post(
+            url=f"{OLLAMA_HOST}/api/chat",
+            json={
+                "model": os.environ["OLLAMA_MODEL"],
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                "stream": False,
+            },
+        )
+        response.raise_for_status()
+        return response.json()["message"]["content"]
+    response = _anthropic_client.messages.create(
+        model=os.environ["MODEL"],
+        max_tokens=max_tokens,
+        system=system,
+        messages=[{"role": "user", "content": user}],
+    )
+    return response.content[0].text
+
+
 def _call_anthropic(*, system: str, user: str, response_model: type[ModelT], max_tokens: int) -> ModelT:
     model = os.environ["MODEL"]
     response = _anthropic_client.messages.parse(
