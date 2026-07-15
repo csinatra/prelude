@@ -8,8 +8,12 @@ summary_model}.
 Resumable: kaggle_ids already in the collection are skipped, so the run can
 be interrupted and restarted.
 
-Usage: python -m ingest.ingest_summaries   (run ingest.download first)
+Usage: python -m ingest.ingest_summaries [--limit N]   (run ingest.download first)
+--limit caps how many pending notebooks this invocation summarizes — for
+staged spends; resumability makes successive capped runs additive.
 """
+
+import argparse
 
 from concurrent.futures import ThreadPoolExecutor
 
@@ -72,7 +76,7 @@ def _summarize(*, kaggle_id: int, entry: dict) -> tuple[int, str]:
     return kaggle_id, abstract
 
 
-def main() -> None:
+def main(*, limit: int | None = None) -> None:
     collection = get_collection(name=NOTEBOOK_SUMMARIES)
     notebooks = _load_notebooks()
     print(f"unique notebooks in slice: {len(notebooks)}")
@@ -80,6 +84,9 @@ def main() -> None:
     existing = set(collection.get(ids=[f"nb_{kid}" for kid in notebooks])["ids"])
     pending = {kid: entry for kid, entry in notebooks.items() if f"nb_{kid}" not in existing}
     print(f"already summarized: {len(existing)}; pending: {len(pending)}")
+    if limit is not None:
+        pending = dict(list(pending.items())[:limit])
+        print(f"capped this run to {len(pending)} notebooks (--limit {limit})")
 
     batch_ids: list[str] = []
     batch_texts: list[str] = []
@@ -119,4 +126,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--limit", type=int, default=None)
+    main(limit=parser.parse_args().limit)

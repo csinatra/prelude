@@ -169,6 +169,7 @@ def flag_assumptions(state: PipelineState) -> dict:
             f"Code excerpts from similar competitions:\n{_format_docs(docs)}"
         ),
         response_model=AssumptionFlags,
+        max_tokens=2048,
     )
     return {
         "assumption_flags": [flag.model_dump() for flag in parsed.flags],
