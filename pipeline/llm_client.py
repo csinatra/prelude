@@ -33,17 +33,20 @@ def call_llm(*, system: str, user: str, response_model: type[ModelT], max_tokens
     return _call_anthropic(system=system, user=user, response_model=response_model, max_tokens=max_tokens)
 
 
-def call_llm_text(*, system: str, user: str, max_tokens: int = 4096) -> str:
+def call_llm_text(*, system: str, user: str, max_tokens: int = 4096, model: str | None = None) -> str:
     """Call the configured backend with no output schema. Returns raw text.
 
     Used by the B2/C1 freeform synthesis (which must be free of any imposed
-    structure, including a JSON constraint) and by notebook-summary ingestion.
+    structure, including a JSON constraint) and by notebook-summary ingestion,
+    which pins `model` explicitly — summaries are corpus infrastructure and
+    must stay homogeneous regardless of the MODEL env var (see
+    ingest/ingest_summaries.py).
     """
     if LLM_PROVIDER == "ollama":
         response = requests.post(
             url=f"{OLLAMA_HOST}/api/chat",
             json={
-                "model": os.environ["OLLAMA_MODEL"],
+                "model": model or os.environ["OLLAMA_MODEL"],
                 "messages": [
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},
@@ -54,7 +57,7 @@ def call_llm_text(*, system: str, user: str, max_tokens: int = 4096) -> str:
         response.raise_for_status()
         return response.json()["message"]["content"]
     response = _anthropic_client.messages.create(
-        model=os.environ["MODEL"],
+        model=model or os.environ["MODEL"],
         max_tokens=max_tokens,
         system=system,
         messages=[{"role": "user", "content": user}],

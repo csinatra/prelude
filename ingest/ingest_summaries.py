@@ -1,10 +1,9 @@
 """Build the notebook_summaries collection — level one of two-level retrieval.
 
 One record per unique kaggle_id in the Lite-22 code-block slice: gather the
-notebook's blocks, generate a short LLM abstract of its approach (model from
-the MODEL env var, like every other LLM call — Haiku for dev, per CLAUDE.md),
-embed the abstract with Voyage, store with {kaggle_id, competition_id,
-kaggle_score}.
+notebook's blocks, generate a short LLM abstract of its approach, embed the
+abstract with Voyage, store with {kaggle_id, competition_id, kaggle_score,
+summary_model}.
 
 Resumable: kaggle_ids already in the collection are skipped, so the run can
 be interrupted and restarted.
@@ -19,6 +18,14 @@ import pandas as pd
 from ingest.config import LITE_COMPETITIONS, NOTEBOOK_SUMMARIES, RAW_DIR
 from ingest.store import add_documents, get_collection
 from pipeline.llm_client import call_llm_text
+
+# Pinned deliberately, NOT the MODEL env var: summaries are corpus
+# infrastructure shared identically by every condition and every run — they
+# are exempt from the Haiku-dev/Sonnet-eval switch, and the resumable ingest
+# must never produce a mixed-model collection. Each record carries
+# summary_model metadata so an improper insert is auditable and deletable by
+# filter.
+SUMMARY_MODEL = "claude-haiku-4-5-20251001"
 
 MAX_NOTEBOOK_CHARS = 12_000  # abstract input cap; blocks concatenated in order
 LLM_WORKERS = 8
@@ -60,6 +67,7 @@ def _summarize(*, kaggle_id: int, entry: dict) -> tuple[int, str]:
         system=SUMMARY_SYSTEM,
         user=f"Notebook code cells:\n{text}",
         max_tokens=512,
+        model=SUMMARY_MODEL,
     )
     return kaggle_id, abstract
 
@@ -94,7 +102,11 @@ def main() -> None:
         for done, future in enumerate(futures, start=1):
             kaggle_id, abstract = future.result()
             entry = notebooks[kaggle_id]
-            metadata = {"kaggle_id": kaggle_id, "competition_id": entry["competition_id"]}
+            metadata = {
+                "kaggle_id": kaggle_id,
+                "competition_id": entry["competition_id"],
+                "summary_model": SUMMARY_MODEL,
+            }
             if entry["kaggle_score"] is not None:
                 metadata["kaggle_score"] = entry["kaggle_score"]
             batch_ids.append(f"nb_{kaggle_id}")
