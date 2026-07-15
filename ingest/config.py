@@ -17,6 +17,7 @@ CHROMA_PATH = Path("data/chroma")
 
 COMPETITION_METADATA = "competition_metadata"
 PRACTITIONER_KNOWLEDGE = "practitioner_knowledge"
+NOTEBOOK_SUMMARIES = "notebook_summaries"
 
 CODE4ML_RECORD = "https://zenodo.org/api/records/6607065/files"
 # Note: the "с" in the code_blocks filenames on Zenodo is Cyrillic U+0441.
