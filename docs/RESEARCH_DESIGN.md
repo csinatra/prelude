@@ -129,7 +129,12 @@ contribution, and retrieval-grounded fraction (non-empty
   Lite competitions with known data quirks (leakage paths, temporal
   structure, measurement gaps). A synthetic-corruption arm (deliberately
   under-specified task descriptions) is named as future work, not current
-  scope.
+  scope. Consequently, any effect measured here is interpreted as a
+  conservative lower bound on the expected improvement in the
+  ambiguously-specified real-world settings Prelude targets: the framing
+  portion of the C2 specification largely restates what Kaggle already
+  makes explicit, so the measurable signal is confined to flags and
+  recommendations.
 - **Budget/attention confounds:** document budgets are parity-matched; token
   counts of injected artifacts are logged per run and reported.
 - **Judge circularity:** rubric frozen pre-run; judge blinded to outcomes;
