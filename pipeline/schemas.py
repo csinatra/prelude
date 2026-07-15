@@ -44,8 +44,11 @@ class Recommendation(BaseModel):
     approach: str
     tradeoff: str
     failure_mode: str
-    # indices into AssumptionFlags.flags this recommendation responds to
-    addresses_flags: list[int]
+    # flag_ids ("F0", "F1", ...) this recommendation responds to. IDs are
+    # assigned programmatically in flag_assumptions (never LLM-generated), so
+    # references stay self-describing in serialized artifacts even if the
+    # flags list is later filtered or reordered during analysis.
+    addresses_flags: list[str]
 
 
 class Advice(BaseModel):

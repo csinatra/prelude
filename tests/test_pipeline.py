@@ -39,11 +39,14 @@ FAKE_FLAG = {
     "confidence": "high",
 }
 
+# what the node emits: LLM flag payload + programmatically assigned flag_id
+FAKE_FLAG_WITH_ID = {"flag_id": "F0", **FAKE_FLAG}
+
 FAKE_RECOMMENDATION = {
     "approach": "grouped cross-validation by customer_id with LightGBM",
     "tradeoff": "fewer effective folds vs. leakage-free validation estimates",
     "failure_mode": "optimistic validation if grouping key is wrong",
-    "addresses_flags": [0],
+    "addresses_flags": ["F0"],
 }
 
 FAKE_PAYLOADS = {
@@ -168,7 +171,7 @@ def test_flag_assumptions_returns_structured_flags():
         "stage_trace": ["parse_problem", "surface_signals"],
     }
     result = nodes.flag_assumptions(state)
-    assert result["assumption_flags"] == [FAKE_FLAG]
+    assert result["assumption_flags"] == [FAKE_FLAG_WITH_ID]
     assert result["assumption_flags"][0]["category"] == "iid_violation"
     assert result["assumption_flags"][0]["evidence_doc_ids"] == ["block_abc_0"]
     assert result["stage_trace"] == ["parse_problem", "surface_signals", "flag_assumptions"]
@@ -183,12 +186,12 @@ def test_advise_approach_returns_linked_recommendations():
         "available_signals": FAKE_PAYLOADS["ML data scientist"]["available_signals"],
         "desired_signals": FAKE_PAYLOADS["ML data scientist"]["desired_signals"],
         "prior_work": FAKE_PAYLOADS["ML data scientist"]["prior_work"],
-        "assumption_flags": [FAKE_FLAG],
+        "assumption_flags": [FAKE_FLAG_WITH_ID],
         "stage_trace": ["parse_problem", "surface_signals", "flag_assumptions"],
     }
     result = nodes.advise_approach(state)
     assert result["recommendations"] == [FAKE_RECOMMENDATION]
-    assert result["recommendations"][0]["addresses_flags"] == [0]
+    assert result["recommendations"][0]["addresses_flags"] == ["F0"]
     assert result["stage_trace"] == [
         "parse_problem",
         "surface_signals",
@@ -211,11 +214,11 @@ def test_flags_render_into_advise_prompt(monkeypatch):
     nodes.advise_approach(
         {
             "raw_problem": "problem",
-            "assumption_flags": [FAKE_FLAG],
+            "assumption_flags": [FAKE_FLAG_WITH_ID],
             "stage_trace": [],
         }
     )
-    assert "[0] iid_violation (high confidence)" in captured["user"]
+    assert "[F0] iid_violation (high confidence)" in captured["user"]
 
 
 def test_full_run_populates_all_stages_in_order():
@@ -232,5 +235,5 @@ def test_full_run_populates_all_stages_in_order():
         "advise_approach",
     ]
     assert result["framing_type"] == "causal"
-    assert result["assumption_flags"] == [FAKE_FLAG]
+    assert result["assumption_flags"] == [FAKE_FLAG_WITH_ID]
     assert result["recommendations"] == [FAKE_RECOMMENDATION]

@@ -121,7 +121,7 @@ pipeline/
 ├── nodes.py              # four C2 stage nodes + shared query builders (surface_query etc.)
 ├── schemas.py             # Pydantic stage contracts incl. SpecificationFlag (categorized,
 │                           #   evidence-cited, confidence-rated) and Recommendation
-│                           #   (approach/tradeoff/failure_mode linked to flags by index)
+│                           #   (approach/tradeoff/failure_mode linked to flags by flag_id)
 ├── llm_client.py           # call_llm() schema-constrained + call_llm_text() freeform
 ├── retriever.py             # retrieve() flat + retrieve_two_level() notebook-then-chunk;
 │                             #   leave-one-out enforced in BOTH

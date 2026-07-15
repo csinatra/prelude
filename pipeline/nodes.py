@@ -55,8 +55,9 @@ def _format_flags(flags: list[dict]) -> str:
     if not flags:
         return "(no flags raised)"
     return "\n".join(
-        f"[{index}] {flag['category']} ({flag['confidence']} confidence): {flag['explanation']}"
-        for index, flag in enumerate(flags)
+        f"[{flag['flag_id']}] {flag['category']} ({flag['confidence']} confidence): "
+        f"{flag['explanation']}"
+        for flag in flags
     )
 
 
@@ -171,8 +172,13 @@ def flag_assumptions(state: PipelineState) -> dict:
         response_model=AssumptionFlags,
         max_tokens=2048,
     )
+    # flag_ids assigned here, not by the LLM — stable join keys for
+    # Recommendation.addresses_flags and downstream analysis.
     return {
-        "assumption_flags": [flag.model_dump() for flag in parsed.flags],
+        "assumption_flags": [
+            {"flag_id": f"F{index}", **flag.model_dump()}
+            for index, flag in enumerate(parsed.flags)
+        ],
         "retrieved_flag": _dump(docs),
         "stage_trace": state["stage_trace"] + ["flag_assumptions"],
     }
@@ -198,8 +204,9 @@ def advise_approach(state: PipelineState) -> dict:
             "rather than generic categories, and skip explanations of concepts a practitioner "
             "already knows. Recommend concrete modeling approaches optimized for the stated "
             "evaluation metric. Each recommendation carries its own tradeoff, its most likely "
-            "failure mode given the flagged risks, and addresses_flags — the bracketed indices "
-            "of the assumption flags it responds to (empty if it addresses none directly)."
+            "failure mode given the flagged risks, and addresses_flags — the bracketed flag IDs "
+            "(e.g. F0, F2) of the assumption flags it responds to (empty if it addresses none "
+            "directly)."
             + RETRIEVAL_STANCE
         ),
         user=(
