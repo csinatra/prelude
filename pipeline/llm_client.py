@@ -16,6 +16,7 @@ from typing import TypeVar
 
 import anthropic
 import requests
+from langsmith import traceable
 from pydantic import BaseModel
 
 LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "anthropic")
@@ -26,6 +27,7 @@ _anthropic_client = anthropic.Anthropic() if LLM_PROVIDER == "anthropic" else No
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
+@traceable(run_type="llm")
 def call_llm(*, system: str, user: str, response_model: type[ModelT], max_tokens: int = 1024) -> ModelT:
     """Call the configured backend, constrained to response_model. Returns a validated instance."""
     if LLM_PROVIDER == "ollama":
@@ -33,6 +35,7 @@ def call_llm(*, system: str, user: str, response_model: type[ModelT], max_tokens
     return _call_anthropic(system=system, user=user, response_model=response_model, max_tokens=max_tokens)
 
 
+@traceable(run_type="llm")
 def call_llm_text(*, system: str, user: str, max_tokens: int = 4096, model: str | None = None) -> str:
     """Call the configured backend with no output schema. Returns raw text.
 
