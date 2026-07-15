@@ -69,7 +69,7 @@ def retrieve(
             RetrievedDoc(
                 doc_id=doc_id,
                 competition_id=str(metadata["competition_id"]),
-                source_type=str(metadata["source_type"]),
+                source_type=str(metadata.get("source_type", collection)),
                 text=text,
                 similarity=similarity,
                 kaggle_id=metadata.get("kaggle_id"),
