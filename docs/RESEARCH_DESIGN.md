@@ -136,7 +136,21 @@ contribution, and retrieval-grounded fraction (non-empty
   makes explicit, so the measurable signal is confined to flags and
   recommendations.
 - **Budget/attention confounds:** document budgets are parity-matched; token
-  counts of injected artifacts are logged per run and reported.
+  counts of injected artifacts are logged per run and reported, split into
+  retrieved-block vs synthesis-artifact tokens so "more retrieved knowledge"
+  is distinguishable from "structured restatement of the same knowledge."
+  *Similarity threshold evaluated and rejected pre-run (2026-07-15):* a
+  10-competition calibration sweep (`analysis/calibration.py`,
+  `results/calibration/`) showed the stage-directed queries score ~0.06
+  lower than the flat query against the identical chunk collection (short
+  keyword queries vs full-description queries — query impoverishment, not a
+  text/code modality gap), so any global cutoff filters the staged
+  conditions roughly twice as hard as flat retrieval and breaks knowledge
+  parity. `SIMILARITY_THRESHOLD=None` for v1: budgets bound quantity,
+  top-k rank ordering supplies quality control. Revisit triggers: evidence
+  of junk retrievals in run inspection (then: tail-relevance judging, and
+  per-kind quantile floors derived by a uniform documented rule), or corpus
+  expansion (re-run the sweep — thresholds are corpus-relative).
 - **Judge circularity:** rubric frozen pre-run; judge blinded to outcomes;
   evidence quotes required.
 - **Corpus coverage asymmetry:** 18/22 Lite competitions have practitioner
