@@ -16,6 +16,7 @@ from typing import TypeVar
 
 import anthropic
 import requests
+from langsmith import get_current_run_tree, traceable
 from pydantic import BaseModel
 
 LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "anthropic")
@@ -26,6 +27,27 @@ _anthropic_client = anthropic.Anthropic() if LLM_PROVIDER == "anthropic" else No
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
+def _record_llm_trace_metadata(*, provider: str, model: str, input_tokens: int, output_tokens: int) -> None:
+    """Attach the resolved model and token usage to the current LangSmith run.
+
+    The model is resolved from env inside the provider call, so @traceable's
+    input capture never sees it; without this, a trace can't say whether Haiku
+    or Sonnet produced it. No-op when tracing is disabled.
+    """
+    run = get_current_run_tree()
+    if run is None:
+        return
+    run.set(
+        metadata={"ls_provider": provider, "ls_model_name": model},
+        usage_metadata={
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens,
+        },
+    )
+
+
+@traceable(run_type="llm")
 def call_llm(*, system: str, user: str, response_model: type[ModelT], max_tokens: int = 1024) -> ModelT:
     """Call the configured backend, constrained to response_model. Returns a validated instance."""
     if LLM_PROVIDER == "ollama":
@@ -33,6 +55,7 @@ def call_llm(*, system: str, user: str, response_model: type[ModelT], max_tokens
     return _call_anthropic(system=system, user=user, response_model=response_model, max_tokens=max_tokens)
 
 
+@traceable(run_type="llm")
 def call_llm_text(*, system: str, user: str, max_tokens: int = 4096, model: str | None = None) -> str:
     """Call the configured backend with no output schema. Returns raw text.
 
@@ -55,12 +78,26 @@ def call_llm_text(*, system: str, user: str, max_tokens: int = 4096, model: str 
             },
         )
         response.raise_for_status()
-        return response.json()["message"]["content"]
+        body = response.json()
+        _record_llm_trace_metadata(
+            provider="ollama",
+            model=model or os.environ["OLLAMA_MODEL"],
+            input_tokens=body.get("prompt_eval_count", 0),
+            output_tokens=body.get("eval_count", 0),
+        )
+        return body["message"]["content"]
+    resolved_model = model or os.environ["MODEL"]
     response = _anthropic_client.messages.create(
-        model=model or os.environ["MODEL"],
+        model=resolved_model,
         max_tokens=max_tokens,
         system=system,
         messages=[{"role": "user", "content": user}],
+    )
+    _record_llm_trace_metadata(
+        provider="anthropic",
+        model=resolved_model,
+        input_tokens=response.usage.input_tokens,
+        output_tokens=response.usage.output_tokens,
     )
     return response.content[0].text
 
@@ -73,6 +110,12 @@ def _call_anthropic(*, system: str, user: str, response_model: type[ModelT], max
         system=system,
         messages=[{"role": "user", "content": user}],
         output_format=response_model,
+    )
+    _record_llm_trace_metadata(
+        provider="anthropic",
+        model=model,
+        input_tokens=response.usage.input_tokens,
+        output_tokens=response.usage.output_tokens,
     )
     return response.parsed_output
 
@@ -92,5 +135,11 @@ def _call_ollama(*, system: str, user: str, response_model: type[ModelT], max_to
         },
     )
     response.raise_for_status()
-    text = response.json()["message"]["content"]
-    return response_model.model_validate_json(text)
+    body = response.json()
+    _record_llm_trace_metadata(
+        provider="ollama",
+        model=model,
+        input_tokens=body.get("prompt_eval_count", 0),
+        output_tokens=body.get("eval_count", 0),
+    )
+    return response_model.model_validate_json(body["message"]["content"])

@@ -29,7 +29,19 @@ change. Last updated: 2026-07-14 (design-review refactor; no eval runs yet).
 
 - Notebook-summary ingestion (`ingest.ingest_summaries`): one Haiku call per
   unique notebook in the corpus slice — thousands of short calls, est.
-  $5–15, resumable.
+  $5–15, resumable. **Actual (2026-07-15): ~$20 for 5,937 notebooks**
+  (~$0.003–0.005/notebook; estimate predated the notebook count).
 - Full-corpus expansion (pre-production): re-embedding at ~10× dev-slice
   volume stays within the free-token allowance; MLEModernizer ingestion is
-  cloud-box disk/bandwidth, not API cost.
+  cloud-box disk/bandwidth, not API cost. Note: naively re-running Haiku
+  summaries over full Code4ML (~20× notebooks) would be ~$400 at the
+  observed per-notebook rate — budget deliberately before that step.
+  **Decision (2026-07-15): use the Anthropic Batch API (50% discount, same
+  pinned SUMMARY_MODEL — no homogeneity impact) for the Code4ML expansion:
+  ~$200 for ~110–115k remaining notebooks.** MLEModernizer summary cost is
+  NOT included and is unsized until the tarball is opened on the cloud box:
+  two-level retrieval requires a level-one abstract per retrieval unit, so
+  either its units get the same batched-Haiku treatment (cost scales with
+  unit count, unknown) or native docs (READMEs/abstracts) serve as level-one
+  text (embedding-only cost). Count units and check for native abstracts
+  before estimating.

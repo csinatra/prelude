@@ -14,6 +14,7 @@ staged spends; resumability makes successive capped runs additive.
 """
 
 import argparse
+import os
 
 from concurrent.futures import ThreadPoolExecutor
 
@@ -77,6 +78,12 @@ def _summarize(*, kaggle_id: int, entry: dict) -> tuple[int, str]:
 
 
 def main(*, limit: int | None = None) -> None:
+    # Bulk corpus infrastructure: thousands of LLM calls per run. Tracing each
+    # one burns the LangSmith monthly trace quota (it did, 2026-07-15) and adds
+    # nothing — the resumable collection + summary_model metadata are the audit
+    # trail here. Experiment-time pipeline calls stay traced.
+    os.environ["LANGSMITH_TRACING"] = "false"
+    os.environ["LANGSMITH_TRACING_V2"] = "false"
     collection = get_collection(name=NOTEBOOK_SUMMARIES)
     notebooks = _load_notebooks()
     print(f"unique notebooks in slice: {len(notebooks)}")
