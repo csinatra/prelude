@@ -212,20 +212,39 @@ result = app.invoke(input={"problem_statement": "..."})
   with evidence citation and flag linkage; two-level (notebook→chunk)
   retrieval as the shared practitioner-knowledge unit; analysis scaffold
   (frozen judge rubric, artifact preservation); pipeline/config.py central
-  tunables. Unit-tested; NOT yet live-verified (needs notebook_summaries
-  ingestion).
+  tunables.
+- ✅ Full dev corpus: notebook_summaries complete (5,937 abstracts, pinned
+  Haiku, `summary_model`-stamped). Observability: prompts, resolved model,
+  and token usage traced at the `llm_client` seam; bulk ingest and tests
+  deliberately untraced (LangSmith quota). Provenance: manifest.json per
+  run artifact (git commit, model, condition coordinates).
+- ✅ Spec-side harness (`harness/`): per-condition spec.md renderer
+  (additive composition — each grid step changes exactly one thing),
+  append-only runs.jsonl registry (status lifecycle spec_built →
+  agent_run → graded, mergeable across machines), CLI runner with
+  block/synthesis token split. Live-verified: all four conditions on
+  spooky-author-identification, leave-one-out held, zero dangling flag
+  references.
+- ✅ Threshold calibration: 10-competition sweep (`analysis/calibration.py`,
+  re-runnable). Decision, recorded pre-run in RESEARCH_DESIGN.md:
+  `SIMILARITY_THRESHOLD=None` for v1 — stage-directed queries score ~0.06
+  lower than flat against the same chunks, so any global cutoff breaks
+  knowledge parity; top-k rank ordering is the quality control.
 
 **Next:**
-1. Run `ingest.ingest_summaries` (thousands of short LLM calls, resumable),
-   then live-verify all four run conditions on spooky-author-identification.
-2. Calibrate `SIMILARITY_THRESHOLD` + retrieval budgets on 5–10 dev
-   competitions. Note: observed good-match similarities run 0.48–0.66 —
-   sweep ~0.45–0.70, not the brief's 0.65–0.85.
-3. Build the MLE-bench eval harness that scores A/B1/B2/C1/C2 (C1 =
-   pilot subset default) and produces the writeup numbers (runs.jsonl
-   registry + spec renderer + analysis/artifacts.py integration).
-4. Expand practitioner_knowledge beyond the Lite-22 slice before production
-   runs (Code4ML full + MLEModernizer on the cloud box).
+1. Cloud-box half of the harness: inject spec.md into AIDE inside the
+   MLE-bench container (no LLM calls in there — core constraint 1),
+   advance runs through agent_run → graded in runs.jsonl, wire MLE-bench
+   grading + secondary metrics into the registry.
+2. Corpus expansion before production runs: remaining Code4ML summaries
+   via the Anthropic Batch API (~$200 decision recorded in
+   COST_ESTIMATE.md; needs a batch-mode ingest variant), then size
+   MLEModernizer after opening the tarball on the cloud box (unit count +
+   native-abstract check first). Re-run the calibration sweep after any
+   expansion — thresholds are corpus-relative.
+3. Eval runs per RESEARCH_DESIGN.md (B1/B2/C1-pilot/C2, ~10 Lite
+   competitions × 3 seeds, Sonnet) + mechanistic judging via
+   analysis/judge.py against the frozen rubric.
 
 ## Out of scope (don't propose these unprompted)
 
