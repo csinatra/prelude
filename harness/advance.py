@@ -1,0 +1,133 @@
+"""Cloud-box side of the registry: advance runs through agent_run → graded.
+
+Runs on the machine that executes AIDE and MLE-bench grading. Appends
+transition entries to runs.jsonl — each entry carries only its new fields;
+load_runs() merges per run_key, so spec-time fields survive. The resulting
+registry file is what gets merged back to the dev machine.
+
+Usage:
+    python -m harness.advance agent-run --run-key <K> \
+        [--submission PATH] [--trajectory PATH] [--wallclock-secs N]
+    python -m harness.advance graded --run-key <K> --report grading_report.json
+"""
+
+import argparse
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+from harness.registry import append_run, load_runs
+
+# Subset of mle-bench's CompetitionReport (mlebench/grade_helpers.py, pinned
+# commit 507f92e) recorded into the registry. Thresholds kept so medal
+# distance is computable without re-opening report files.
+GRADED_FIELDS = [
+    "score",
+    "any_medal",
+    "gold_medal",
+    "silver_medal",
+    "bronze_medal",
+    "above_median",
+    "submission_exists",
+    "valid_submission",
+    "is_lower_better",
+    "gold_threshold",
+    "silver_threshold",
+    "bronze_threshold",
+    "median_threshold",
+]
+
+
+def _advance(*, run_key: str, status: str, fields: dict) -> dict:
+    known = load_runs()
+    if run_key not in known:
+        raise SystemExit(f"unknown run_key: {run_key} (build the spec first; check merge state)")
+    entry = {
+        "run_key": run_key,
+        "status": status,
+        **fields,
+        "updated_at": datetime.now(tz=timezone.utc).isoformat(),
+    }
+    append_run(entry=entry)
+    return entry
+
+
+def record_agent_run(
+    *,
+    run_key: str,
+    submission_path: str | None = None,
+    trajectory_path: str | None = None,
+    wallclock_secs: float | None = None,
+    agent_id: str = "aide-prelude",
+) -> dict:
+    """Register that the AIDE run for this run_key completed."""
+    return _advance(
+        run_key=run_key,
+        status="agent_run",
+        fields={
+            "agent_id": agent_id,
+            "agent_submission_path": submission_path,
+            "agent_trajectory_path": trajectory_path,
+            "agent_wallclock_secs": wallclock_secs,
+        },
+    )
+
+
+def record_graded(*, run_key: str, report: dict) -> dict:
+    """Register MLE-bench grading output (one CompetitionReport dict)."""
+    return _advance(
+        run_key=run_key,
+        status="graded",
+        fields={field: report.get(field) for field in GRADED_FIELDS},
+    )
+
+
+def _report_for(*, report_path: Path, run_key: str, competition_id: str) -> dict:
+    """Accept either a single CompetitionReport or an aggregated grading report."""
+    data = json.loads(report_path.read_text())
+    if "competition_reports" in data:
+        matches = [
+            report
+            for report in data["competition_reports"]
+            if report["competition_id"] == competition_id
+        ]
+        if len(matches) != 1:
+            raise SystemExit(
+                f"{report_path} has {len(matches)} reports for {competition_id}; "
+                f"pass a single-report file for {run_key}"
+            )
+        return matches[0]
+    return data
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    agent_parser = subparsers.add_parser("agent-run")
+    agent_parser.add_argument("--run-key", required=True)
+    agent_parser.add_argument("--submission")
+    agent_parser.add_argument("--trajectory")
+    agent_parser.add_argument("--wallclock-secs", type=float)
+    agent_parser.add_argument("--agent-id", default="aide-prelude")
+
+    graded_parser = subparsers.add_parser("graded")
+    graded_parser.add_argument("--run-key", required=True)
+    graded_parser.add_argument("--report", required=True)
+
+    args = parser.parse_args()
+    if args.command == "agent-run":
+        entry = record_agent_run(
+            run_key=args.run_key,
+            submission_path=args.submission,
+            trajectory_path=args.trajectory,
+            wallclock_secs=args.wallclock_secs,
+            agent_id=args.agent_id,
+        )
+    else:
+        competition_id = load_runs()[args.run_key]["competition_id"]
+        report = _report_for(
+            report_path=Path(args.report), run_key=args.run_key, competition_id=competition_id
+        )
+        entry = record_graded(run_key=args.run_key, report=report)
+    print(json.dumps(entry, indent=2))
