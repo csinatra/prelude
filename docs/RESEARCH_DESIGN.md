@@ -11,10 +11,13 @@ provision achieves?
 
 **Falsifiable hypothesis (H1):** On MLE-bench Lite competitions, an AIDE
 agent given Condition C2's structured specification will achieve a higher
-Any-Medal rate than the same agent given Condition B's unstructured context,
-which in turn will not significantly outperform the published no-assistance
-baseline (A). H1 is falsified if C2 fails to separate from B beyond seed
-noise, or if unstructured provision alone matches structured specification.
+Any-Medal rate than the same agent given Condition B's unstructured context.
+H1 is falsified if C2 fails to separate from B beyond seed noise, or if
+unstructured provision alone matches structured specification. *(Amended
+2026-07-16, pre-run: H1 originally referenced the published no-assistance
+baseline (A); that comparison is invalid because the published AIDE runs
+used gpt-4o-2024-08-06, not our agent model — see the Condition A note
+under the experimental design.)*
 
 **Secondary hypothesis (H2, mechanistic):** C2's advantage, if any, is
 mediated by specification flags being acted on — flag categories with higher
@@ -44,7 +47,7 @@ built plus one grid-external anchor:
 
 | Condition | Retrieval | Synthesis | Isolates (vs) |
 |---|---|---|---|
-| A | none | none | published MLE-bench baseline (cited, not run) |
+| A | none | none | no-assistance anchor — matched agent, contingent arm (see note) |
 | B1 | flat, single query | none — raw context block | knowledge provision per se (vs A) |
 | B2 | flat, single query | freeform, stance-free | LLM preprocessing (vs B1) |
 | C1 | staged, 4 directed queries | freeform, stance-free (B2's path) | staged retrieval (vs B2) |
@@ -52,6 +55,22 @@ built plus one grid-external anchor:
 
 Design notes:
 
+- **Condition A (decided 2026-07-16, pre-run):** the published MLE-bench
+  AIDE baseline used `gpt-4o-2024-08-06` as the code model and is not
+  model-matched to our runs — it is cited as context only and never
+  compared statistically. A *matched* A exists for free in the harness:
+  `aide-prelude` with no spec mounted is byte-identical to stock AIDE
+  (same agent model, hardware, time/step budgets, mle-bench version).
+  It is pre-registered as a **contingent arm**, not a primary condition:
+  (a) infrastructure smoke runs execute unmounted `aide-prelude` and are
+  registered and kept, giving a small matched-A anchor at zero marginal
+  cost; (b) the full A arm (~30 runs, est. +$200–250) triggers only if
+  C2 fails to separate from B, or any condition lands below the plausible
+  no-assistance range — the outcomes under which "is retrieval beneficial
+  at all, or detrimental?" becomes load-bearing for interpretation. The
+  core research question (structured decomposition + directed retrieval
+  vs naive provision) is carried by the B/C contrasts and does not
+  require A.
 - **Retrieval unit held constant.** All conditions receive practitioner
   knowledge as "notebook cards" (top-M chunks from each of N notebooks
   surfaced via a summaries index) plus flat competition-metadata chunks.

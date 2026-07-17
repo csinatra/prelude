@@ -24,6 +24,9 @@ change. Last updated: 2026-07-14 (design-review refactor; no eval runs yet).
 - **Embeddings:** within Voyage's 200M free-token allowance (dev corpus
   ~13M tokens; notebook summaries small) → **~$0**
 - **Total: ~$600–700**, dominated by GPU compute, not API cost.
+- Contingent matched-A arm (~30 stock-AIDE runs, triggers per
+  RESEARCH_DESIGN.md Condition A note): **+$200–250 if triggered**; small
+  matched-A anchor comes free from registered smoke runs either way.
 
 ## One-time / infrastructure
 
