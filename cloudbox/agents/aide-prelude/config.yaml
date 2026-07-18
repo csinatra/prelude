@@ -7,6 +7,14 @@
 # aide/claude-3-5-sonnet paired an Anthropic code model with a gpt-4o
 # feedback model; single-provider keeps the run condition Anthropic-only.
 # Finalize before eval runs (pre-run decision, record in RESEARCH_DESIGN.md).
+#
+# [confirm on box]: requirements.txt pins aideml@v6.3.3 (2024) — its
+# Anthropic backend may predate the claude-sonnet-5 model id. The hard
+# requirement is only that ONE model is pinned identically for every run
+# in the grid; if sonnet-5 isn't supported, drop to the newest Sonnet the
+# pinned backend accepts (newer preferred for sensitivity — a too-weak
+# agent compresses between-condition signal toward the floor). Record the
+# final choice in RESEARCH_DESIGN.md before eval runs.
 
 vars:
   step_count: &step_count 500

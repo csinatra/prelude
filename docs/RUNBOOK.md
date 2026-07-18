@@ -75,12 +75,23 @@ First agent run: `aide-prelude/dev` (8 steps) with **no spec mounted** —
 byte-identical to stock AIDE, so it doubles as a matched Condition A data
 point (see the Condition A note in RESEARCH_DESIGN.md). Launch per
 mle-bench's README (`run_agent.py` with `--agent-id aide-prelude/dev`).
-**[confirm on box]:** exact flags, and that the agent image builds cleanly
-from our forked dir.
+**[confirm on box]:** exact flags; that the agent image builds cleanly
+from our forked dir; and that aideml v6.3.3's Anthropic backend accepts
+the configured model id. If `claude-sonnet-5` isn't supported, drop to
+the newest Sonnet it accepts — the hard requirement is one pinned model
+for every run in the grid, not a particular version (see the note in
+`cloudbox/agents/aide-prelude/config.yaml`); record the final choice in
+RESEARCH_DESIGN.md before eval runs.
 
-Register it — A-runs use the registry too. Build the A "spec" entry by
-hand or record it directly with a spec_built entry whose condition is `A`,
-then advance as in step 6.
+Register it — A-runs use the registry too (they have no spec-build phase,
+so they enter via `register` rather than `harness.runner`):
+
+```bash
+python -m harness.advance register --competition spooky-author-identification \
+    --condition A --seed 0
+```
+
+Then advance it through agent-run/graded as in step 6.
 
 ## 5. Condition runs
 

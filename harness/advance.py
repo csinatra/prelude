@@ -6,9 +6,14 @@ load_runs() merges per run_key, so spec-time fields survive. The resulting
 registry file is what gets merged back to the dev machine.
 
 Usage:
+    python -m harness.advance register --competition <ID> --condition A --seed 0
     python -m harness.advance agent-run --run-key <K> \
         [--submission PATH] [--trajectory PATH] [--wallclock-secs N]
     python -m harness.advance graded --run-key <K> --report grading_report.json
+
+`register` exists for runs with no spec-build phase — Condition A (stock
+AIDE, no spec mounted; see the Condition A note in RESEARCH_DESIGN.md).
+B/C runs enter the registry via harness.runner instead.
 """
 
 import argparse
@@ -16,6 +21,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from analysis.artifacts import _git_provenance, run_key as make_run_key
 from harness.registry import append_run, load_runs
 
 # Subset of mle-bench's CompetitionReport (mlebench/grade_helpers.py, pinned
@@ -47,6 +53,24 @@ def _advance(*, run_key: str, status: str, fields: dict) -> dict:
         "status": status,
         **fields,
         "updated_at": datetime.now(tz=timezone.utc).isoformat(),
+    }
+    append_run(entry=entry)
+    return entry
+
+
+def register_run(*, competition_id: str, condition: str, seed: int) -> dict:
+    """Create the initial registry entry for a run with no spec-build phase."""
+    key = make_run_key(competition_id=competition_id, condition=condition, seed=seed)
+    if key in load_runs():
+        raise SystemExit(f"run_key already registered: {key}")
+    entry = {
+        "run_key": key,
+        "competition_id": competition_id,
+        "condition": condition,
+        "seed": seed,
+        "status": "registered",
+        **_git_provenance(),
+        "created_at": datetime.now(tz=timezone.utc).isoformat(),
     }
     append_run(entry=entry)
     return entry
@@ -113,6 +137,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    register_parser = subparsers.add_parser("register")
+    register_parser.add_argument("--competition", required=True)
+    register_parser.add_argument("--condition", required=True)
+    register_parser.add_argument("--seed", type=int, default=0)
+
     agent_parser = subparsers.add_parser("agent-run")
     agent_parser.add_argument("--run-key", required=True)
     agent_parser.add_argument("--submission")
@@ -127,7 +156,11 @@ if __name__ == "__main__":
     graded_parser.add_argument("--report", required=True)
 
     args = parser.parse_args()
-    if args.command == "agent-run":
+    if args.command == "register":
+        entry = register_run(
+            competition_id=args.competition, condition=args.condition, seed=args.seed
+        )
+    elif args.command == "agent-run":
         entry = record_agent_run(
             run_key=args.run_key,
             submission_path=args.submission,

@@ -69,6 +69,20 @@ def test_advance_unknown_run_key_fails(seeded_registry):
         advance.record_agent_run(run_key="nope_C2_9")
 
 
+def test_register_creates_specless_run_then_advances(seeded_registry):
+    advance.register_run(competition_id="comp", condition="A", seed=0)
+    run = registry.load_runs()["comp_A_0"]
+    assert run["status"] == "registered"
+    assert run["condition"] == "A"
+    advance.record_agent_run(run_key="comp_A_0", wallclock_secs=100.0)
+    assert registry.load_runs()["comp_A_0"]["status"] == "agent_run"
+
+
+def test_register_duplicate_run_key_fails(seeded_registry):
+    with pytest.raises(SystemExit):
+        advance.register_run(competition_id="comp", condition="B2", seed=0)
+
+
 def test_report_for_extracts_from_aggregated_report(tmp_path):
     import json
 
