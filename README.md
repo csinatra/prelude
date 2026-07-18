@@ -144,6 +144,10 @@ uv pip install langgraph langsmith anthropic python-dotenv pytest requests chrom
 # LANGSMITH_TRACING_V2=true, LANGSMITH_PROJECT=spec-pipeline-dev
 ```
 
+For cloud-box provisioning and end-to-end experiment execution (spec
+builds → AIDE runs → grading → analysis), see
+[docs/RUNBOOK.md](docs/RUNBOOK.md).
+
 ## Run the toy pipeline
 
 Two-stage smoke pipeline (`understand -> advise`) used to validate the
