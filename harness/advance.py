@@ -58,9 +58,16 @@ def record_agent_run(
     submission_path: str | None = None,
     trajectory_path: str | None = None,
     wallclock_secs: float | None = None,
+    steps: int | None = None,
+    time_to_first_valid_secs: float | None = None,
     agent_id: str = "aide-prelude",
 ) -> dict:
-    """Register that the AIDE run for this run_key completed."""
+    """Register that the AIDE run for this run_key completed.
+
+    steps and time_to_first_valid_secs come from the AIDE journal; the full
+    journal is preserved via trajectory_path for score-vs-time trajectory
+    analysis (efficiency accounting — see RESEARCH_DESIGN.md).
+    """
     return _advance(
         run_key=run_key,
         status="agent_run",
@@ -69,6 +76,8 @@ def record_agent_run(
             "agent_submission_path": submission_path,
             "agent_trajectory_path": trajectory_path,
             "agent_wallclock_secs": wallclock_secs,
+            "agent_steps": steps,
+            "agent_time_to_first_valid_secs": time_to_first_valid_secs,
         },
     )
 
@@ -109,6 +118,8 @@ if __name__ == "__main__":
     agent_parser.add_argument("--submission")
     agent_parser.add_argument("--trajectory")
     agent_parser.add_argument("--wallclock-secs", type=float)
+    agent_parser.add_argument("--steps", type=int)
+    agent_parser.add_argument("--time-to-first-valid-secs", type=float)
     agent_parser.add_argument("--agent-id", default="aide-prelude")
 
     graded_parser = subparsers.add_parser("graded")
@@ -122,6 +133,8 @@ if __name__ == "__main__":
             submission_path=args.submission,
             trajectory_path=args.trajectory,
             wallclock_secs=args.wallclock_secs,
+            steps=args.steps,
+            time_to_first_valid_secs=args.time_to_first_valid_secs,
             agent_id=args.agent_id,
         )
     else:

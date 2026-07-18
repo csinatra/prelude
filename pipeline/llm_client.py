@@ -12,6 +12,7 @@ wiring only — never for eval runs.
 """
 
 import os
+from datetime import datetime, timezone
 from typing import TypeVar
 
 import anthropic
@@ -26,14 +27,51 @@ _anthropic_client = anthropic.Anthropic() if LLM_PROVIDER == "anthropic" else No
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
+# Process-local usage ledger, reset/read by callers (harness.runner wraps
+# each condition run) — the durable record of upfront spec-build cost.
+# One entry per LLM call, in call order; pipeline stages execute
+# sequentially, so call order attributes usage to stages. LangSmith gets
+# the same numbers per call, but traces are ephemeral and quota-bound; the
+# run artifact needs them locally.
+_usage_log: list[dict] = []
+
+
+def reset_usage() -> None:
+    _usage_log.clear()
+
+
+def usage_log() -> list[dict]:
+    """Per-call entries since the last reset, in call order."""
+    return list(_usage_log)
+
+
+def usage_snapshot() -> dict[str, int]:
+    """Totals since the last reset."""
+    return {
+        "llm_calls": len(_usage_log),
+        "input_tokens": sum(entry["input_tokens"] for entry in _usage_log),
+        "output_tokens": sum(entry["output_tokens"] for entry in _usage_log),
+    }
+
 
 def _record_llm_trace_metadata(*, provider: str, model: str, input_tokens: int, output_tokens: int) -> None:
-    """Attach the resolved model and token usage to the current LangSmith run.
+    """Accumulate token usage locally and attach model/usage to the LangSmith run.
 
     The model is resolved from env inside the provider call, so @traceable's
     input capture never sees it; without this, a trace can't say whether Haiku
-    or Sonnet produced it. No-op when tracing is disabled.
+    or Sonnet produced it. Trace attach is a no-op when tracing is disabled;
+    the local ledger always accumulates.
     """
+    _usage_log.append(
+        {
+            "call_index": len(_usage_log),
+            "provider": provider,
+            "model": model,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "at": datetime.now(tz=timezone.utc).isoformat(),
+        }
+    )
     run = get_current_run_tree()
     if run is None:
         return

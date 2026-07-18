@@ -22,13 +22,19 @@ def seeded_registry(tmp_path, monkeypatch):
 
 def test_agent_run_transition_preserves_spec_fields(seeded_registry):
     advance.record_agent_run(
-        run_key="comp_B2_0", submission_path="/x/submission.csv", wallclock_secs=3600.0
+        run_key="comp_B2_0",
+        submission_path="/x/submission.csv",
+        wallclock_secs=3600.0,
+        steps=42,
+        time_to_first_valid_secs=900.0,
     )
     run = registry.load_runs()["comp_B2_0"]
     assert run["status"] == "agent_run"
     assert run["spec_tokens"] == 111  # merged, not erased
     assert run["agent_id"] == "aide-prelude"
     assert run["agent_wallclock_secs"] == 3600.0
+    assert run["agent_steps"] == 42
+    assert run["agent_time_to_first_valid_secs"] == 900.0
 
 
 def test_graded_transition_records_metric_subset(seeded_registry):
