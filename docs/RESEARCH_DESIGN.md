@@ -39,6 +39,40 @@ outcome differences.
   prompt-level structured reasoning; not applied to ML problem
   specification.
 
+## System overview
+
+```mermaid
+flowchart LR
+    subgraph corpus["Offline corpus build (ingest/)"]
+        c4ml["Code4ML CSVs"] --> pk[("practitioner_knowledge<br/>62k code chunks")]
+        c4ml --> ns[("notebook_summaries<br/>5,937 pinned-Haiku abstracts")]
+        descs["mle-bench description.md"] --> cm[("competition_metadata")]
+    end
+
+    subgraph specbuild["Spec build (dev machine, Anthropic API)"]
+        desc["competition description"] --> cond["condition pipeline<br/>B1 / B2 / C1 / C2"]
+        pk -.->|"leave-one-out<br/>retrieval"| cond
+        ns -.-> cond
+        cm -.-> cond
+        cond --> spec["spec.md + run artifacts<br/>runs.jsonl: spec_built"]
+    end
+
+    subgraph cloudbox["Cloud box (GPU; no spec-pipeline LLM calls)"]
+        spec -->|"mounted at<br/>/home/spec/spec.md"| aide["aide-prelude agent<br/>(MLE-bench container)"]
+        aide --> sub["submission.csv +<br/>AIDE journal"]
+        sub --> grade["mlebench grade"]
+        grade --> reg["runs.jsonl:<br/>agent_run → graded"]
+    end
+
+    reg --> anal["analysis/:<br/>judging, trajectories, plots"]
+```
+
+The spec pipeline (left, laptop) and agent execution (right, cloud box)
+never share a runtime: specs are serialized text by the time they reach the
+container (core constraint 1). The append-only registry is the join —
+spec-time entries from the dev machine, agent/grading entries from the box,
+merged per run_key.
+
 ## Experimental design
 
 Five conditions, structured as a 2 (retrieval: flat vs staged) × 3
@@ -52,6 +86,29 @@ built plus one grid-external anchor:
 | B2 | flat, single query | freeform, stance-free | LLM preprocessing (vs B1) |
 | C1 | staged, 4 directed queries | freeform, stance-free (B2's path) | staged retrieval (vs B2) |
 | C2 | staged, 4 directed queries | structured schemas + critical-integration stance | synthesis structure (vs C1) |
+
+Per-condition workflow — every arrow into a spec is one grid step's single
+change:
+
+```mermaid
+flowchart TD
+    D["competition description"] --> FQ["two-level retrieval, flat<br/>(single query = full description)"]
+    FQ --> CB["context block<br/>(notebook cards + metadata)"]
+    CB --> B1["B1 spec:<br/>context block"]
+    CB --> FS1["freeform synthesis<br/>(stance-free)"]
+    FS1 --> B2["B2 spec:<br/>block + advice"]
+
+    D --> P["parse stage<br/>(structured extraction)"]
+    P --> Q["3 directed queries<br/>(surface / flag / advise)"]
+    Q --> SR["two-level retrieval, staged<br/>(same notebook→chunk unit and<br/>total budget as flat; directed queries)"]
+    SR --> SCB["staged context block<br/>(deduped across stages)"]
+    SCB --> FS2["freeform synthesis<br/>(B2's path, stance-free)"]
+    FS2 --> C1["C1 spec:<br/>staged block + advice"]
+    SR --> ST["surface → flag → advise<br/>(structured stages, RETRIEVAL_STANCE)"]
+    ST --> C2["C2 spec:<br/>staged block + framing,<br/>signals, flags, recommendations"]
+
+    A["Condition A (contingent):<br/>no spec mounted = stock AIDE"]
+```
 
 Design notes:
 
@@ -126,6 +183,22 @@ competitions; treated as directional, not confirmatory.
 1. Leaderboard percentile of the final submission
 2. Valid-submission rate (fraction of runs producing a gradeable submission)
 3. Time-to-first-valid-submission (wall-clock within the AIDE run)
+
+**Cost/efficiency accounting (added 2026-07-17, pre-run):** every run
+carries a two-sided ledger linking upfront specification cost to downstream
+agent behavior, answering whether C's additional spec-build LLM calls save
+agent cycles relative to B:
+
+- *Spec side* (registry + `llm_usage.json` per run artifact): build
+  wall-clock, LLM call count, input/output tokens — per call, in stage
+  order, so per-stage attribution is free.
+- *Agent side* (registry via `harness.advance`, journal preserved as the
+  trajectory artifact): run wall-clock, AIDE steps used,
+  time-to-first-valid-submission, and per-step score/time curves derived
+  from the AIDE journal — enabling trajectory comparison across conditions
+  and problem types. Per-step agent *token* usage is not in AIDE's journal
+  by default; a behavior-neutral logging patch to the aide-prelude variant
+  (identical across all conditions) is a noted container-side follow-up.
 
 ## Mechanistic evaluation
 
