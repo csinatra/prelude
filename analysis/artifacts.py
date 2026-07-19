@@ -7,6 +7,8 @@ eval outputs):
     ├── spec.md            # injected specification/context artifact (all conditions)
     ├── retrievals.json    # every retrieval call: doc IDs + similarities
     ├── pipeline_output.json  # full condition output (state / advice / flags)
+    ├── llm_usage.json     # per-call spec-build usage (written by harness.runner;
+    │                      #   call order == stage order, sequential nodes)
     ├── manifest.json      # provenance: git commit (pins prompts/config), model, timestamp
     ├── submission.csv     # copied final submission (when available)
     └── trajectory.log     # copied agent trajectory/logs (when available)

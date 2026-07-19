@@ -141,6 +141,11 @@ def test_run_condition_end_to_end(tmp_path, monkeypatch):
     assert entry["block_tokens"] == 42
     assert entry["synthesis_tokens"] == 42
     assert entry["git_commit"]
+    # Efficiency ledger: mocked condition runner makes no LLM calls.
+    assert entry["spec_llm_calls"] == 0
+    assert entry["spec_llm_input_tokens"] == 0
+    assert entry["spec_build_secs"] >= 0
+    assert json.loads((run_dir / "llm_usage.json").read_text()) == []
 
 
 def test_spec_sections_split_composes_to_render():

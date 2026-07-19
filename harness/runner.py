@@ -13,7 +13,9 @@ Usage: python -m harness.runner --competition spooky-author-identification \
 """
 
 import argparse
+import json
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -23,6 +25,7 @@ from harness.renderer import render_spec, spec_sections
 from pipeline.condition_b import run_b1, run_b2
 from pipeline.condition_c1 import run_c1
 from pipeline.condition_c2 import run_c2
+from pipeline.llm_client import reset_usage, usage_log, usage_snapshot
 
 DESCRIPTIONS_DIR = Path("data/raw/mlebench_descriptions")
 
@@ -69,9 +72,13 @@ def _count_tokens(*, text: str) -> int | None:
 def run_condition(*, competition_id: str, condition: str, seed: int) -> Path:
     """Build one spec, save artifacts, register the run. Returns the run directory."""
     raw_problem = load_description(competition_id=competition_id)
+    reset_usage()
+    build_started = time.monotonic()
     output = CONDITION_RUNNERS[condition](
         raw_problem=raw_problem, competition_id=competition_id
     )
+    spec_build_secs = round(time.monotonic() - build_started, 3)
+    usage = usage_snapshot()
     sections = spec_sections(condition=condition, output=output)
     spec_document = render_spec(condition=condition, output=output)
     run_dir = save_artifacts(
@@ -82,6 +89,8 @@ def run_condition(*, competition_id: str, condition: str, seed: int) -> Path:
         retrievals=_extract_retrievals(condition=condition, output=output),
         pipeline_output=output,
     )
+    # Per-call spec-build usage, call order == stage order (sequential nodes).
+    (run_dir / "llm_usage.json").write_text(json.dumps(usage_log(), indent=2))
     append_run(
         entry={
             "run_key": run_key(competition_id=competition_id, condition=condition, seed=seed),
@@ -96,6 +105,10 @@ def run_condition(*, competition_id: str, condition: str, seed: int) -> Path:
             "synthesis_tokens": _count_tokens(text=sections["synthesis"])
             if sections["synthesis"]
             else 0,
+            "spec_build_secs": spec_build_secs,
+            "spec_llm_calls": usage["llm_calls"],
+            "spec_llm_input_tokens": usage["input_tokens"],
+            "spec_llm_output_tokens": usage["output_tokens"],
             **_git_provenance(),
             "llm_provider": os.environ.get("LLM_PROVIDER", "anthropic"),
             "model": os.environ.get("MODEL"),

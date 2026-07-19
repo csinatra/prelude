@@ -11,10 +11,13 @@ provision achieves?
 
 **Falsifiable hypothesis (H1):** On MLE-bench Lite competitions, an AIDE
 agent given Condition C2's structured specification will achieve a higher
-Any-Medal rate than the same agent given Condition B's unstructured context,
-which in turn will not significantly outperform the published no-assistance
-baseline (A). H1 is falsified if C2 fails to separate from B beyond seed
-noise, or if unstructured provision alone matches structured specification.
+Any-Medal rate than the same agent given Condition B's unstructured context.
+H1 is falsified if C2 fails to separate from B beyond seed noise, or if
+unstructured provision alone matches structured specification. *(Amended
+2026-07-16, pre-run: H1 originally referenced the published no-assistance
+baseline (A); that comparison is invalid because the published AIDE runs
+used gpt-4o-2024-08-06, not our agent model — see the Condition A note
+under the experimental design.)*
 
 **Secondary hypothesis (H2, mechanistic):** C2's advantage, if any, is
 mediated by specification flags being acted on — flag categories with higher
@@ -36,6 +39,40 @@ outcome differences.
   prompt-level structured reasoning; not applied to ML problem
   specification.
 
+## System overview
+
+```mermaid
+flowchart LR
+    subgraph corpus["Offline corpus build (ingest/)"]
+        c4ml["Code4ML CSVs"] --> pk[("practitioner_knowledge<br/>62k code chunks")]
+        c4ml --> ns[("notebook_summaries<br/>5,937 pinned-Haiku abstracts")]
+        descs["mle-bench description.md"] --> cm[("competition_metadata")]
+    end
+
+    subgraph specbuild["Spec build (dev machine, Anthropic API)"]
+        desc["competition description"] --> cond["condition pipeline<br/>B1 / B2 / C1 / C2"]
+        pk -.->|"leave-one-out<br/>retrieval"| cond
+        ns -.-> cond
+        cm -.-> cond
+        cond --> spec["spec.md + run artifacts<br/>runs.jsonl: spec_built"]
+    end
+
+    subgraph cloudbox["Cloud box (GPU; no spec-pipeline LLM calls)"]
+        spec -->|"mounted at<br/>/home/spec/spec.md"| aide["aide-prelude agent<br/>(MLE-bench container)"]
+        aide --> sub["submission.csv +<br/>AIDE journal"]
+        sub --> grade["mlebench grade"]
+        grade --> reg["runs.jsonl:<br/>agent_run → graded"]
+    end
+
+    reg --> anal["analysis/:<br/>judging, trajectories, plots"]
+```
+
+The spec pipeline (left, laptop) and agent execution (right, cloud box)
+never share a runtime: specs are serialized text by the time they reach the
+container (core constraint 1). The append-only registry is the join —
+spec-time entries from the dev machine, agent/grading entries from the box,
+merged per run_key.
+
 ## Experimental design
 
 Five conditions, structured as a 2 (retrieval: flat vs staged) × 3
@@ -44,14 +81,53 @@ built plus one grid-external anchor:
 
 | Condition | Retrieval | Synthesis | Isolates (vs) |
 |---|---|---|---|
-| A | none | none | published MLE-bench baseline (cited, not run) |
+| A | none | none | no-assistance anchor — matched agent, contingent arm (see note) |
 | B1 | flat, single query | none — raw context block | knowledge provision per se (vs A) |
 | B2 | flat, single query | freeform, stance-free | LLM preprocessing (vs B1) |
 | C1 | staged, 4 directed queries | freeform, stance-free (B2's path) | staged retrieval (vs B2) |
 | C2 | staged, 4 directed queries | structured schemas + critical-integration stance | synthesis structure (vs C1) |
 
+Per-condition workflow — every arrow into a spec is one grid step's single
+change:
+
+```mermaid
+flowchart TD
+    D["competition description"] --> FQ["two-level retrieval, flat<br/>(single query = full description)"]
+    FQ --> CB["context block<br/>(notebook cards + metadata)"]
+    CB --> B1["B1 spec:<br/>context block"]
+    CB --> FS1["freeform synthesis<br/>(stance-free)"]
+    FS1 --> B2["B2 spec:<br/>block + advice"]
+
+    D --> P["parse stage<br/>(structured extraction)"]
+    P --> Q["3 directed queries<br/>(surface / flag / advise)"]
+    Q --> SR["two-level retrieval, staged<br/>(same notebook→chunk unit and<br/>total budget as flat; directed queries)"]
+    SR --> SCB["staged context block<br/>(deduped across stages)"]
+    SCB --> FS2["freeform synthesis<br/>(B2's path, stance-free)"]
+    FS2 --> C1["C1 spec:<br/>staged block + advice"]
+    SR --> ST["surface → flag → advise<br/>(structured stages, RETRIEVAL_STANCE)"]
+    ST --> C2["C2 spec:<br/>staged block + framing,<br/>signals, flags, recommendations"]
+
+    A["Condition A (contingent):<br/>no spec mounted = stock AIDE"]
+```
+
 Design notes:
 
+- **Condition A (decided 2026-07-16, pre-run):** the published MLE-bench
+  AIDE baseline used `gpt-4o-2024-08-06` as the code model and is not
+  model-matched to our runs — it is cited as context only and never
+  compared statistically. A *matched* A exists for free in the harness:
+  `aide-prelude` with no spec mounted is byte-identical to stock AIDE
+  (same agent model, hardware, time/step budgets, mle-bench version).
+  It is pre-registered as a **contingent arm**, not a primary condition:
+  (a) infrastructure smoke runs execute unmounted `aide-prelude` and are
+  registered and kept, giving a small matched-A anchor at zero marginal
+  cost; (b) the full A arm (~30 runs, est. +$200–250) triggers only if
+  C2 fails to separate from B, or any condition lands below the plausible
+  no-assistance range — the outcomes under which "is retrieval beneficial
+  at all, or detrimental?" becomes load-bearing for interpretation. The
+  core research question (structured decomposition + directed retrieval
+  vs naive provision) is carried by the B/C contrasts and does not
+  require A.
 - **Retrieval unit held constant.** All conditions receive practitioner
   knowledge as "notebook cards" (top-M chunks from each of N notebooks
   surfaced via a summaries index) plus flat competition-metadata chunks.
@@ -70,6 +146,10 @@ Design notes:
   subset.
 - AIDE scaffold, agent model, and MLE-bench grading are held constant across
   all run conditions.
+- **Spec-pipeline eval model pinned (2026-07-19):** `EVAL_MODEL =
+  claude-sonnet-5` (`pipeline/config.py`) for all eval-run spec builds;
+  distinct from the AIDE agent-model pin, which is finalized on-box per the
+  aideml-support note (2026-07-17) before eval runs.
 
 ## Corpus construction
 
@@ -107,6 +187,22 @@ competitions; treated as directional, not confirmatory.
 1. Leaderboard percentile of the final submission
 2. Valid-submission rate (fraction of runs producing a gradeable submission)
 3. Time-to-first-valid-submission (wall-clock within the AIDE run)
+
+**Cost/efficiency accounting (added 2026-07-17, pre-run):** every run
+carries a two-sided ledger linking upfront specification cost to downstream
+agent behavior, answering whether C's additional spec-build LLM calls save
+agent cycles relative to B:
+
+- *Spec side* (registry + `llm_usage.json` per run artifact): build
+  wall-clock, LLM call count, input/output tokens — per call, in stage
+  order, so per-stage attribution is free.
+- *Agent side* (registry via `harness.advance`, journal preserved as the
+  trajectory artifact): run wall-clock, AIDE steps used,
+  time-to-first-valid-submission, and per-step score/time curves derived
+  from the AIDE journal — enabling trajectory comparison across conditions
+  and problem types. Per-step agent *token* usage is not in AIDE's journal
+  by default; a behavior-neutral logging patch to the aide-prelude variant
+  (identical across all conditions) is a noted container-side follow-up.
 
 ## Mechanistic evaluation
 

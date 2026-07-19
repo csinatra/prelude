@@ -32,8 +32,10 @@ pipeline stages, and prior art.
 2. **Model selection by purpose.**
    - **Development iteration** — Claude Haiku (`claude-haiku-4-5-20251001`).
      Fast, cheap, good enough to validate pipeline shape.
-   - **Evaluation runs** — Claude Sonnet (latest). Only for the runs whose
-     results go in the writeup.
+   - **Evaluation runs** — the pinned `EVAL_MODEL` in `pipeline/config.py`
+     (`claude-sonnet-5`), chosen pre-run and recorded in
+     docs/RESEARCH_DESIGN.md alongside the other pre-registered decisions.
+     Only for the runs whose results go in the writeup.
    - Keep the model name in one place per module (a constant) so swapping
      is one edit.
    - **Local Ollama backend** — `pipeline/llm_client.py` also supports
@@ -68,7 +70,63 @@ pipeline stages, and prior art.
 
 7. **The judge rubric is frozen.** `docs/JUDGE_RUBRIC.md` was written before
    any evaluation run and must not be revised after seeing results —
-   amendments require a dated entry and re-judging of prior runs.
+   amendments require a dated entry and re-judging of prior runs. A SHA-256
+   pin test (deferred 2026-07-19) will mechanically enforce this
+   immediately before eval runs begin.
+
+8. **Document-budget parity is a research-validity invariant.** Condition
+   B's flat document budget must equal the staged conditions' total
+   (`METADATA_K` ~ parse; `BASELINE_N_NOTEBOOKS × BASELINE_CHUNKS_PER_NOTEBOOK`
+   = 3 practitioner stages × `STAGE_N_NOTEBOOKS` × `STAGE_CHUNKS_PER_NOTEBOOK`).
+   Changing any budget in `pipeline/config.py` requires re-checking this
+   parity; a mismatch invalidates cross-condition comparison. Note this is
+   parity of *documents retrieved*, not injected tokens — token counts are
+   logged per run (block/synthesis split) and reported, not equalized.
+
+## Commands
+
+```bash
+pytest tests/ -q                       # run all tests (LLM + retrieval mocked)
+python -m pipeline.toy                 # toy two-stage smoke pipeline
+python -m harness.runner --competition spooky-author-identification \
+    --condition C2 --seed 0            # one condition on one competition
+python -m analysis.calibration        # threshold sweep (APPROVAL REQUIRED)
+python -m ingest.download             # corpus downloads (APPROVAL REQUIRED)
+python -m ingest.ingest_metadata      # Chroma writes  (APPROVAL REQUIRED)
+python -m ingest.ingest_notebooks     # Chroma writes  (APPROVAL REQUIRED)
+python -m ingest.ingest_summaries     # LLM spend      (APPROVAL REQUIRED)
+```
+
+Required env (see `.env.example` for the authoritative list): `ANTHROPIC_API_KEY`,
+`VOYAGE_API_KEY`, `MODEL`, `LANGSMITH_API_KEY`, `LANGSMITH_TRACING_V2`,
+`LANGSMITH_PROJECT`; optional: `LLM_PROVIDER` (default `anthropic`),
+`OLLAMA_HOST`/`OLLAMA_MODEL` (Ollama backend only), `SIMILARITY_THRESHOLD`,
+`CHROMA_PATH`.
+
+## Approval required — never run unprompted
+
+Build and modify these code paths freely, but never *execute* them without
+an explicit operator instruction in the current session:
+
+- Any eval run using the pinned `EVAL_MODEL` (Sonnet)
+- Any Anthropic Batch API job (e.g. the ~$200 corpus summarization)
+- Corpus ingest or re-ingest (any Chroma write: `ingest.*` modules)
+- Calibration sweeps (`analysis.calibration` — LLM calls per competition)
+- Anything that consumes LangSmith trace quota in bulk
+
+## Execution environments
+
+Two machines, split by responsibility; `results/runs.jsonl` is the merge
+point between them (append-only, merge = concatenate):
+
+- **Local MacBook** — pipeline dev, spec-side harness, dev-corpus work,
+  analysis. All spec-pipeline LLM calls happen here.
+- **Cloud box (GPU)** — MLE-bench containers, AIDE injection, the
+  MLEModernizer tarball, `agent_run`/`graded` registry stages.
+
+When a task belongs to the other machine, build the code here but do not
+attempt to execute it. See [docs/RUNBOOK.md](docs/RUNBOOK.md) for the
+operational workflow.
 
 ## Behavioral guidelines (apply to every task)
 
@@ -144,7 +202,8 @@ analysis/              # post-run mechanistic analysis (scaffold until runs exis
 ├── judge.py           # per-flag judging vs docs/JUDGE_RUBRIC.md + per-category aggregation
 └── artifacts.py       # results/{comp}_{condition}_{seed}/ preservation layout
 
-docs/                  # RESEARCH_DESIGN.md, JUDGE_RUBRIC.md (FROZEN), COST_ESTIMATE.md
+docs/                  # RESEARCH_DESIGN.md, JUDGE_RUBRIC.md (FROZEN), COST_ESTIMATE.md,
+                       #   RUNBOOK.md, PROGRESS.md (milestone history), DECISIONS.md (audit trail)
 tests/                 # pytest; no real API calls — call_llm + both retrieval seams mocked
 notebooks/             # exploration, eval analysis
 data/                  # raw downloads + ChromaDB store — gitignored
@@ -183,49 +242,33 @@ app = graph.compile()
 result = app.invoke(input={"problem_statement": "..."})
 ```
 
-## What "done" looks like for the current phase
+## Current state
 
-- ✅ Toy two-stage pipeline runs end-to-end against the real Anthropic API
-  and produces a LangSmith trace.
-- ✅ Real four-stage chain (`parse_problem → surface_signals →
-  flag_assumptions → advise_approach`) built and wired in `pipeline/graph.py`,
-  runs end-to-end via `pipeline/condition_c2.py`.
-- ✅ Backend is swappable (`LLM_PROVIDER=anthropic|ollama`) via
-  `pipeline/llm_client.py`, verified against a local Ollama model.
-- ✅ Unit tests (`tests/test_pipeline.py`) cover each node plus a full run,
-  with `call_llm` mocked — no real API calls.
-- ✅ Stage outputs are Pydantic models (`pipeline/schemas.py`), enforced via
-  native structured outputs — `messages.parse(output_format=...)` on
-  Anthropic, JSON-schema `format` on Ollama. Verified end-to-end against
-  both backends.
-- ✅ RAG layer built: `ingest/` package (Code4ML + mle-bench descriptions →
-  two ChromaDB collections), `pipeline/retriever.py` seam with leave-one-out
-  filter, one directed retrieval per stage wired into `pipeline/nodes.py`,
-  schemas/prompts refit for MLE-bench competition descriptions. Unit-tested
-  (retrieval + LLM mocked); voyage-code-3 verified live.
+Four-stage C2 pipeline plus B1/B2/C1 conditions built and
+live-verified end-to-end. Dev corpus ingested: 1,005 metadata
+chunks, 62,379 practitioner chunks, 5,937 notebook summaries.
+Spec-side harness working: per-condition spec.md renderer,
+append-only runs.jsonl registry, per-run artifacts with
+provenance + usage ledger. Threshold calibration decided pre-run:
+SIMILARITY_THRESHOLD=None for v1. Cloud-box half scaffolded
+(aide-prelude agent variant, advancement CLI, provisioning
+script) but unverified — no GPU box yet.
+History: [docs/PROGRESS.md](docs/PROGRESS.md).
 
-- ✅ Dev-subset corpus ingested and live-verified: 1,005 metadata chunks,
-  62,379 practitioner chunks; four-stage run on spooky-author-identification
-  (Haiku, 54s) with leave-one-out held in all four retrievals.
-- ✅ Design-review refactor: conditions renamed/extended to B1/B2/C1/C2
-  (see docs/RESEARCH_DESIGN.md); SpecificationFlag/Recommendation schemas
-  with evidence citation and flag linkage; two-level (notebook→chunk)
-  retrieval as the shared practitioner-knowledge unit; analysis scaffold
-  (frozen judge rubric, artifact preservation); pipeline/config.py central
-  tunables. Unit-tested; NOT yet live-verified (needs notebook_summaries
-  ingestion).
-
-**Next:**
-1. Run `ingest.ingest_summaries` (thousands of short LLM calls, resumable),
-   then live-verify all four run conditions on spooky-author-identification.
-2. Calibrate `SIMILARITY_THRESHOLD` + retrieval budgets on 5–10 dev
-   competitions. Note: observed good-match similarities run 0.48–0.66 —
-   sweep ~0.45–0.70, not the brief's 0.65–0.85.
-3. Build the MLE-bench eval harness that scores A/B1/B2/C1/C2 (C1 =
-   pilot subset default) and produces the writeup numbers (runs.jsonl
-   registry + spec renderer + analysis/artifacts.py integration).
-4. Expand practitioner_knowledge beyond the Lite-22 slice before production
-   runs (Code4ML full + MLEModernizer on the cloud box).
+## Next
+1. Cloud-box half of the harness: inject spec.md into AIDE inside the
+   MLE-bench container (no LLM calls in there — core constraint 1),
+   advance runs through agent_run → graded in runs.jsonl, wire MLE-bench
+   grading + secondary metrics into the registry.
+2. Corpus expansion before production runs: remaining Code4ML summaries
+   via the Anthropic Batch API (~$200 decision recorded in
+   COST_ESTIMATE.md; needs a batch-mode ingest variant), then size
+   MLEModernizer after opening the tarball on the cloud box (unit count +
+   native-abstract check first). Re-run the calibration sweep after any
+   expansion — thresholds are corpus-relative.
+3. Eval runs per RESEARCH_DESIGN.md (B1/B2/C1-pilot/C2, ~10 Lite
+   competitions × 3 seeds, Sonnet) + mechanistic judging via
+   analysis/judge.py against the frozen rubric.
 
 ## Out of scope (don't propose these unprompted)
 
