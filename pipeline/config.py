@@ -10,6 +10,14 @@ by document budget.
 
 import os
 
+# ── Models ──────────────────────────────────────────────────────────
+# Eval-run spec-pipeline model, pinned pre-run (recorded 2026-07-19 in
+# docs/RESEARCH_DESIGN.md). Set MODEL to this value for runs whose results
+# go in the writeup; dev iteration stays on Haiku. Distinct from the AIDE
+# agent model (cloudbox/agents/aide-prelude/config.yaml), which has its
+# own pin.
+EVAL_MODEL = "claude-sonnet-5"
+
 # ── Collections ─────────────────────────────────────────────────────
 COMPETITION_METADATA = "competition_metadata"
 PRACTITIONER_KNOWLEDGE = "practitioner_knowledge"

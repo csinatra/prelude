@@ -146,6 +146,10 @@ Design notes:
   subset.
 - AIDE scaffold, agent model, and MLE-bench grading are held constant across
   all run conditions.
+- **Spec-pipeline eval model pinned (2026-07-19):** `EVAL_MODEL =
+  claude-sonnet-5` (`pipeline/config.py`) for all eval-run spec builds;
+  distinct from the AIDE agent-model pin, which is finalized on-box per the
+  aideml-support note (2026-07-17) before eval runs.
 
 ## Corpus construction
 
