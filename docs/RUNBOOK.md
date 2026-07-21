@@ -53,9 +53,12 @@ rsync -av results/ <box>:~/work/prelude/results/
 ## 3. Provision the box (once per instance)
 
 ```bash
-export ANTHROPIC_API_KEY=... KAGGLE_USERNAME=... KAGGLE_KEY=...
-export MLEBENCH_DATA_DIR=/mnt/persistent/mlebench-data
 git clone https://github.com/csinatra/prelude.git ~/work/prelude
+# fill from the template, then source it — box gets only the four keys it
+# needs (least privilege; spec-pipeline keys stay on the dev machine)
+cp ~/work/prelude/.env.cloudbox.example ~/work/prelude/.env.cloudbox
+# edit .env.cloudbox, then:
+set -a && . ~/work/prelude/.env.cloudbox && set +a
 ~/work/prelude/scripts/setup_cloudbox.sh
 ```
 
