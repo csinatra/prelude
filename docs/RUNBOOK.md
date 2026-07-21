@@ -131,6 +131,27 @@ Copy `submission.csv` and the journal into the run's artifact dir
 (`results/{run_key}/`) — they feed the frozen-rubric judging and
 trajectory analysis.
 
+### Automated: drain the queue (recommended once the seams are confirmed)
+
+Steps 4–6 above are the manual, one-run-at-a-time path — use them for the
+first smoke run to confirm the box-specific seams. After that, `harness.batch`
+runs every unfinished run in the registry back-to-back (agent → grade →
+advance), so the GPU never idles between runs or after the last one:
+
+```bash
+python -m harness.batch --data-dir $MLEBENCH_DATA_DIR \
+    --terminate-on-done --instance-id <lambda-instance-id>
+```
+
+It queues by `run_key` (competition × condition × seed) in registry order,
+blocks on each AIDE run to completion, isolates failures (a crashed run is
+logged and skipped, not fatal), and with `--terminate-on-done` terminates the
+Lambda box once drained (needs `LAMBDA_API_KEY` on the box). **[confirm on
+box]:** the `_run_agent` / `_locate_outputs` / `_read_journal_metrics` /
+`_grade` seams in `harness/batch.py` carry the guessed mle-bench commands and
+output layout — verify and fix them during the smoke run before relying on the
+automated path.
+
 ## 7. Merge back and analyze (dev machine)
 
 ```bash
