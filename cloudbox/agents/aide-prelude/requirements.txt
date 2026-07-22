@@ -1,1 +1,5 @@
+# thesofakillers/aideml is MLE-bench's own designated fork for the AIDE agent
+# (see the agents table in mle-bench/agents/README.md at the pinned commit:
+# https://github.com/openai/mle-bench/blob/507f92e1138bb6e40dac5c6ee7a6758e6424bf97/agents/README.md),
+# inherited verbatim — not an independent dependency choice. See ACKNOWLEDGMENTS.md.
 git+https://github.com/thesofakillers/aideml@v6.3.3
