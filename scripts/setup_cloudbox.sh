@@ -38,6 +38,18 @@ cd "$WORK_DIR"
 if [ ! -d prelude ]; then git clone "$PRELUDE_REPO"; fi
 cd prelude && git pull --ff-only && cd ..
 
+# Persist results/ (runs.jsonl registry + artifacts + logs) on the mounted
+# volume, not the ephemeral boot disk. The queue/resume/abandon model needs the
+# registry to survive instance termination, and --terminate-on-done would
+# otherwise destroy the very run outputs and failure logs it just produced.
+RESULTS_DIR="$MLEBENCH_DATA_DIR/prelude-results"
+mkdir -p "$RESULTS_DIR"
+if [ -e "$WORK_DIR/prelude/results" ] && [ ! -L "$WORK_DIR/prelude/results" ]; then
+  echo "WARNING: $WORK_DIR/prelude/results exists and is not a symlink — leaving as-is" >&2
+else
+  ln -sfn "$RESULTS_DIR" "$WORK_DIR/prelude/results"
+fi
+
 # ── mle-bench, pinned ─────────────────────────────────────────────────
 if [ ! -d mle-bench ]; then git clone https://github.com/openai/mle-bench.git; fi
 cd mle-bench
@@ -49,12 +61,11 @@ python3 -m venv .venv 2>/dev/null || true
 ln -sfn "$WORK_DIR/prelude/cloudbox/agents/aide-prelude" agents/aide-prelude
 cd ..
 
-echo "Provisioned. Next steps:"
-echo "  1. Prepare competitions (persistent volume, one-time per competition):"
-echo "     cd mle-bench && .venv/bin/mlebench prepare -c <competition-id> --data-dir \$MLEBENCH_DATA_DIR"
-echo "  2. Smoke run WITHOUT a spec mount (= matched Condition A; register and keep it):"
-echo "     run agent aide-prelude/dev per mle-bench README, no /home/spec mount"
+echo "Provisioned (results/ -> $RESULTS_DIR on the persistent volume). Next steps:"
+echo "  1. Prepare the smoke competition (persistent volume, one-time):"
+echo "     cd mle-bench && .venv/bin/mlebench prepare -c random-acts-of-pizza --data-dir \$MLEBENCH_DATA_DIR"
+echo "  2. Smoke run (throwaway wiring test): aide-prelude/dev, no /home/spec mount"
+echo "     run agent aide-prelude/dev per mle-bench README — confirm the [confirm on box] seams"
 echo "  3. Condition runs: mount the run's spec.md at /home/spec/spec.md"
-echo "  4. Advance the registry after each phase:"
-echo "     python -m harness.advance agent-run --run-key <K> ..."
-echo "     python -m harness.advance graded --run-key <K> --report <grading_report.json>"
+echo "  4. Drain the queue back-to-back once the seams are confirmed:"
+echo "     python -m harness.batch --data-dir \$MLEBENCH_DATA_DIR --terminate-on-done --instance-id <id>"

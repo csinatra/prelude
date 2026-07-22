@@ -63,21 +63,26 @@ set -a && . ~/work/prelude/.env.cloudbox && set +a
 ```
 
 The script preflights GPU/Docker, clones mle-bench at the pinned commit,
-installs it, and symlinks `cloudbox/agents/aide-prelude` into mle-bench's
-agents dir. Then prepare each competition onto the persistent volume
-(one-time per competition):
+installs it, symlinks `cloudbox/agents/aide-prelude` into mle-bench's agents
+dir, and symlinks `results/` onto the persistent volume
+(`$MLEBENCH_DATA_DIR/prelude-results`) so the registry, artifacts, and failure
+logs survive instance termination — without this, `--terminate-on-done` would
+destroy the run state it just produced. Then prepare each competition onto the
+persistent volume (one-time per competition):
 
 ```bash
 cd ~/work/mle-bench
-.venv/bin/mlebench prepare -c spooky-author-identification --data-dir $MLEBENCH_DATA_DIR
+.venv/bin/mlebench prepare -c random-acts-of-pizza --data-dir $MLEBENCH_DATA_DIR
 ```
 
-## 4. Smoke run = matched Condition A (register and keep)
+## 4. Smoke run (integration test — throwaway)
 
-First agent run: `aide-prelude/dev` (8 steps) with **no spec mounted** —
-byte-identical to stock AIDE, so it doubles as a matched Condition A data
-point (see the Condition A note in RESEARCH_DESIGN.md). Launch per
-mle-bench's README (`run_agent.py` with `--agent-id aide-prelude/dev`).
+First agent run is a wiring check, not a data point. Use
+`random-acts-of-pizza` — reserved as the off-eval integration competition
+(excluded from the eval subset; small text task, description already local) —
+with the `aide-prelude/dev` 8-step variant and **no spec mounted**
+(byte-identical to stock AIDE). Launch per mle-bench's README (`run_agent.py`
+with `--agent-id aide-prelude/dev`).
 **[confirm on box]:** exact flags; that the agent image builds cleanly
 from our forked dir; and that aideml v6.3.3's Anthropic backend accepts
 the configured model id. If `claude-sonnet-5` isn't supported, drop to
@@ -86,15 +91,12 @@ for every run in the grid, not a particular version (see the note in
 `cloudbox/agents/aide-prelude/config.yaml`); record the final choice in
 RESEARCH_DESIGN.md before eval runs.
 
-Register it — A-runs use the registry too (they have no spec-build phase,
-so they enter via `register` rather than `harness.runner`):
-
-```bash
-python -m harness.advance register --competition spooky-author-identification \
-    --condition A --seed 0
-```
-
-Then advance it through agent-run/graded as in step 6.
+Discard the smoke result: the 8-step dev budget is too short to be a valid
+Condition A run, and the competition is off-eval by design. The matched-A
+anchor is **separate and contingent** (RESEARCH_DESIGN.md Condition A note) —
+if triggered, it runs unmounted `aide-prelude` at the full budget on the eval
+competitions and enters the registry via `harness.advance register`
+(`--condition A`), then advances through agent-run/graded as in step 6.
 
 ## 5. Condition runs
 
@@ -130,6 +132,54 @@ python -m harness.advance graded --run-key spooky-author-identification_C2_0 \
 Copy `submission.csv` and the journal into the run's artifact dir
 (`results/{run_key}/`) — they feed the frozen-rubric judging and
 trajectory analysis.
+
+### Automated: drain the queue (recommended once the seams are confirmed)
+
+Steps 4–6 above are the manual, one-run-at-a-time path — use them for the
+first smoke run to confirm the box-specific seams. After that, `harness.batch`
+runs every unfinished run in the registry back-to-back (agent → grade →
+advance), so the GPU never idles between runs or after the last one:
+
+```bash
+python -m harness.batch --data-dir $MLEBENCH_DATA_DIR \
+    --terminate-on-done --instance-id <lambda-instance-id>
+```
+
+It queues by `run_key` (competition × condition × seed), grouped by
+competition so a problem's full cross-condition set completes contiguously,
+blocks on each AIDE run to completion, and with `--terminate-on-done`
+terminates the Lambda box once drained (needs `LAMBDA_API_KEY` +
+`--instance-id`).
+
+**Failures are parked, not retried.** A run that raises is marked `abandoned`
+in the registry with its `last_error` and skipped — so a deterministic failure
+never re-runs on the next invocation (which would burn GPU unbounded and keep
+the box from draining to termination). There is no automatic retry: inspect the
+parked run's `last_error` and mle-bench's per-run logs, fix the root cause, then
+re-queue explicitly:
+
+```bash
+python -m harness.batch --data-dir $MLEBENCH_DATA_DIR --retry-abandoned
+```
+
+**Reviewing results and the terminate tradeoff.** `results/` is symlinked onto
+the persistent filesystem, so terminating never loses run state — but a Lambda
+filesystem is only reachable through a *running* instance it's attached to (no
+standalone mount; VS Code Remote-SSH needs a live box). Two patterns:
+
+- *Attended (smoke + early grid):* run **without** `--terminate-on-done`. The
+  box stays up after draining; review over SSH/VS Code, `rsync` results to the
+  laptop (the analysis machine), then terminate manually.
+- *Unattended (mature runs):* use `--terminate-on-done` for cost control.
+  Results persist on the filesystem; to review, either pull them beforehand or
+  re-attach the filesystem to a fresh (cheap) instance. `--retry-abandoned`
+  later just needs the same filesystem re-attached — the registry state is
+  intact.
+
+**[confirm on box]:** the `_run_agent` / `_locate_outputs` /
+`_read_journal_metrics` / `_grade` seams in `harness/batch.py` carry the
+guessed mle-bench commands and output layout — verify and fix them during the
+smoke run before relying on the automated path.
 
 ## 7. Merge back and analyze (dev machine)
 

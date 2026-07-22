@@ -21,3 +21,7 @@ duplication). Append new decisions with a date; never rewrite past entries.
 | 2026-07-17 | Two-sided cost/efficiency ledger (spec-side per-call usage; agent-side wallclock/steps/trajectories) | RESEARCH_DESIGN.md outcome metrics |
 | 2026-07-19 | Spec-pipeline eval model pinned: `EVAL_MODEL=claude-sonnet-5` | pipeline/config.py; RESEARCH_DESIGN.md design notes |
 | 2026-07-19 | Rubric SHA-256 pin test deferred until immediately before eval runs (pre-run amendments still expected) | CLAUDE.md core constraint 7 |
+| 2026-07-22 | POC scope: eval on a small (3–5) subset of Lite-22; mechanistic spec-judging is the primary signal, MLE-bench score a conservative lower bound | RESEARCH_DESIGN.md Roadmap v1 + Outcome metrics |
+| 2026-07-22 | `random-acts-of-pizza` reserved as the off-eval integration/smoke competition (excluded from the eval subset) | docs/RUNBOOK.md step 4 |
+| 2026-07-22 | Smoke run decoupled from the matched-A anchor (8-step dev budget is not a valid A run); matched-A stays contingent, full-budget, on eval competitions | RESEARCH_DESIGN.md Condition A note; docs/RUNBOOK.md step 4 |
+| 2026-07-22 | Batch driver queues by competition (all conditions of a problem contiguous) so per-problem analysis needn't wait on the full grid | harness/batch.py::pending_runs |

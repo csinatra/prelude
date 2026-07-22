@@ -119,15 +119,17 @@ Design notes:
   `aide-prelude` with no spec mounted is byte-identical to stock AIDE
   (same agent model, hardware, time/step budgets, mle-bench version).
   It is pre-registered as a **contingent arm**, not a primary condition:
-  (a) infrastructure smoke runs execute unmounted `aide-prelude` and are
-  registered and kept, giving a small matched-A anchor at zero marginal
-  cost; (b) the full A arm (~30 runs, est. +$200–250) triggers only if
-  C2 fails to separate from B, or any condition lands below the plausible
-  no-assistance range — the outcomes under which "is retrieval beneficial
-  at all, or detrimental?" becomes load-bearing for interpretation. The
-  core research question (structured decomposition + directed retrieval
-  vs naive provision) is carried by the B/C contrasts and does not
-  require A.
+  the full A arm (~30 runs, est. +$200–250) — unmounted `aide-prelude` on
+  the eval competitions at the same model/hardware/budget as B/C — triggers
+  only if C2 fails to separate from B, or any condition lands below the
+  plausible no-assistance range, the outcomes under which "is retrieval
+  beneficial at all, or detrimental?" becomes load-bearing for
+  interpretation. Infrastructure smoke runs (RUNBOOK step 4) are decoupled
+  from this: they use the 8-step `dev` variant on a held-out off-eval
+  competition and are throwaway integration checks, **not** matched-A data
+  points — the dev budget is too short to be a valid A run. The core
+  research question (structured decomposition + directed retrieval vs naive
+  provision) is carried by the B/C contrasts and does not require A.
 - **Retrieval unit held constant.** All conditions receive practitioner
   knowledge as "notebook cards" (top-M chunks from each of N notebooks
   surfaced via a summaries index) plus flat competition-metadata chunks.
@@ -180,8 +182,11 @@ Design notes:
 ## Outcome metrics (defined in advance)
 
 **Primary:** Any-Medal rate (MLE-bench grading), mean ± one standard error
-across 3 seeds per competition. Acknowledged as low-powered at n≈10
-competitions; treated as directional, not confirmatory.
+across 3 seeds per competition. Acknowledged as low-powered at n≈3–5
+competitions (POC subset); treated as directional, not confirmatory — under
+the POC framing (see Roadmap) the mechanistic spec-judging carries the
+primary evidential weight and the MLE-bench delta is a conservative lower
+bound.
 
 **Secondary (higher resolution):**
 1. Leaderboard percentile of the final submission
@@ -257,8 +262,17 @@ contribution, and retrieval-grounded fraction (non-empty
 
 ## Roadmap
 
-**v1 (this design):** everything above — B1/B2/C1-pilot/C2 on ~10 Lite
-competitions, 3 seeds (1 for C1 pilot), mechanistic judging, writeup.
+**v1 (this design, POC scope — 2026-07-22):** B1/B2/C1-pilot/C2 on a small
+subset (3–5) of Lite-22 (specific competitions pinned pre-run), 3 seeds (1
+for C1 pilot), mechanistic judging, writeup. Scope rationale: as a solo POC
+the goal is a rigorous, honest end-to-end run — not a fully-powered result.
+The mechanistic spec-quality judging is the primary informative signal (it
+measures specification quality directly); the MLE-bench score delta is a
+conservative secondary lower bound. Kaggle's pre-specified tasks structurally
+disadvantage the mechanism (Threats → construct validity), so MLE-bench is
+chosen for objective grading, not representativeness, and a small subset is
+adequate. Full Lite-22 with a disjoint wider-mle-bench smoke competition is
+the natural v1.5 if an initial result is pursued.
 
 **v2 (explicitly out of scope):** MLE-Dojo / interactive specification
 reasoning; iteration depth as an experimental variable; real
