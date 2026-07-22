@@ -69,15 +69,17 @@ agents dir. Then prepare each competition onto the persistent volume
 
 ```bash
 cd ~/work/mle-bench
-.venv/bin/mlebench prepare -c spooky-author-identification --data-dir $MLEBENCH_DATA_DIR
+.venv/bin/mlebench prepare -c random-acts-of-pizza --data-dir $MLEBENCH_DATA_DIR
 ```
 
-## 4. Smoke run = matched Condition A (register and keep)
+## 4. Smoke run (integration test — throwaway)
 
-First agent run: `aide-prelude/dev` (8 steps) with **no spec mounted** —
-byte-identical to stock AIDE, so it doubles as a matched Condition A data
-point (see the Condition A note in RESEARCH_DESIGN.md). Launch per
-mle-bench's README (`run_agent.py` with `--agent-id aide-prelude/dev`).
+First agent run is a wiring check, not a data point. Use
+`random-acts-of-pizza` — reserved as the off-eval integration competition
+(excluded from the eval subset; small text task, description already local) —
+with the `aide-prelude/dev` 8-step variant and **no spec mounted**
+(byte-identical to stock AIDE). Launch per mle-bench's README (`run_agent.py`
+with `--agent-id aide-prelude/dev`).
 **[confirm on box]:** exact flags; that the agent image builds cleanly
 from our forked dir; and that aideml v6.3.3's Anthropic backend accepts
 the configured model id. If `claude-sonnet-5` isn't supported, drop to
@@ -86,15 +88,12 @@ for every run in the grid, not a particular version (see the note in
 `cloudbox/agents/aide-prelude/config.yaml`); record the final choice in
 RESEARCH_DESIGN.md before eval runs.
 
-Register it — A-runs use the registry too (they have no spec-build phase,
-so they enter via `register` rather than `harness.runner`):
-
-```bash
-python -m harness.advance register --competition spooky-author-identification \
-    --condition A --seed 0
-```
-
-Then advance it through agent-run/graded as in step 6.
+Discard the smoke result: the 8-step dev budget is too short to be a valid
+Condition A run, and the competition is off-eval by design. The matched-A
+anchor is **separate and contingent** (RESEARCH_DESIGN.md Condition A note) —
+if triggered, it runs unmounted `aide-prelude` at the full budget on the eval
+competitions and enters the registry via `harness.advance register`
+(`--condition A`), then advances through agent-run/graded as in step 6.
 
 ## 5. Condition runs
 
