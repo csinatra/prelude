@@ -10,7 +10,8 @@ from harness import advance, batch, registry
 
 @pytest.fixture
 def seeded_registry(tmp_path, monkeypatch):
-    """Three runs: one graded (done), one spec_built (B2), one registered (A)."""
+    """Runs across two competitions, appended out of order: one graded (done),
+    the rest pending, so ordering (by competition) is observable."""
     monkeypatch.setattr(registry, "RUNS_PATH", tmp_path / "runs.jsonl")
     registry.append_run(entry={
         "run_key": "comp_C2_0", "competition_id": "comp", "condition": "C2",
@@ -21,14 +22,19 @@ def seeded_registry(tmp_path, monkeypatch):
         "seed": 0, "status": "spec_built", "spec_path": "results/comp_B2_0/spec.md",
     })
     registry.append_run(entry={
+        "run_key": "alpha_B1_0", "competition_id": "alpha", "condition": "B1",
+        "seed": 0, "status": "spec_built", "spec_path": "results/alpha_B1_0/spec.md",
+    })
+    registry.append_run(entry={
         "run_key": "comp_A_0", "competition_id": "comp", "condition": "A",
         "seed": 0, "status": "registered",
     })
 
 
-def test_pending_excludes_graded_and_preserves_order(seeded_registry):
+def test_pending_excludes_graded_and_groups_by_competition(seeded_registry):
     keys = [run["run_key"] for run in batch.pending_runs()]
-    assert keys == ["comp_B2_0", "comp_A_0"]  # graded C2 dropped; registry order kept
+    # graded comp_C2_0 dropped; alpha's runs before comp's; within comp, A before B2
+    assert keys == ["alpha_B1_0", "comp_A_0", "comp_B2_0"]
 
 
 def test_run_batch_executes_each_pending_in_order(seeded_registry):
@@ -37,17 +43,17 @@ def test_run_batch_executes_each_pending_in_order(seeded_registry):
         data_dir=Path("/data"),
         execute=lambda *, run, data_dir: seen.append(run["run_key"]),
     )
-    assert seen == ["comp_B2_0", "comp_A_0"]
+    assert seen == ["alpha_B1_0", "comp_A_0", "comp_B2_0"]
 
 
 def test_one_failure_does_not_stall_the_batch(seeded_registry):
     def execute(*, run, data_dir):
-        if run["run_key"] == "comp_B2_0":
+        if run["run_key"] == "comp_A_0":
             raise RuntimeError("agent crashed")
 
     summary = batch.run_batch(data_dir=Path("/data"), execute=execute)
-    assert summary["failed"] == ["comp_B2_0"]
-    assert summary["succeeded"] == ["comp_A_0"]  # next run still ran
+    assert summary["failed"] == ["comp_A_0"]
+    assert summary["succeeded"] == ["alpha_B1_0", "comp_B2_0"]  # runs before and after still ran
 
 
 def test_terminate_on_done_fires_once_when_flagged(seeded_registry, monkeypatch):

@@ -11,7 +11,7 @@ seed). Each condition is its own independent AIDE run with its own spec (or no
 spec, for Condition A) — they never share a run, because the experiment
 compares what AIDE does under each condition on the same competition. The
 registry already keys at this granularity, so pending_runs() yields one item
-per condition-variant.
+per condition-variant, ordered so a competition's variants run contiguously.
 
 Completion signal: a full AIDE run is one run_agent.py process. AIDE searches
 until it exhausts the agent config's step/time cap (config.yaml — fixed and
@@ -65,8 +65,16 @@ class AgentOutputs:
 
 
 def pending_runs() -> list[dict]:
-    """Unfinished runs, in registry order (the order specs were built/shipped)."""
-    return [run for run in load_runs().values() if run.get("status") != DONE_STATUS]
+    """Unfinished runs, grouped by competition then condition then seed.
+
+    Grouping by competition keeps all of a problem's condition-variants
+    contiguous, so a competition's full cross-condition set completes together
+    and can be analyzed without waiting for the rest of the grid.
+    """
+    unfinished = [run for run in load_runs().values() if run.get("status") != DONE_STATUS]
+    return sorted(
+        unfinished, key=lambda run: (run["competition_id"], run["condition"], run["seed"])
+    )
 
 
 # ── box seams: verify on the first smoke run ([confirm on box]) ──────────

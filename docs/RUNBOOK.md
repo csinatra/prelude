@@ -143,7 +143,8 @@ python -m harness.batch --data-dir $MLEBENCH_DATA_DIR \
     --terminate-on-done --instance-id <lambda-instance-id>
 ```
 
-It queues by `run_key` (competition × condition × seed) in registry order,
+It queues by `run_key` (competition × condition × seed), grouped by
+competition so a problem's full cross-condition set completes contiguously,
 blocks on each AIDE run to completion, isolates failures (a crashed run is
 logged and skipped, not fatal), and with `--terminate-on-done` terminates the
 Lambda box once drained (needs `LAMBDA_API_KEY` on the box). **[confirm on
