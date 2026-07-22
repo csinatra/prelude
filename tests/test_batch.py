@@ -52,8 +52,39 @@ def test_one_failure_does_not_stall_the_batch(seeded_registry):
             raise RuntimeError("agent crashed")
 
     summary = batch.run_batch(data_dir=Path("/data"), execute=execute)
-    assert summary["failed"] == ["comp_A_0"]
+    assert summary["abandoned"] == ["comp_A_0"]
     assert summary["succeeded"] == ["alpha_B1_0", "comp_B2_0"]  # runs before and after still ran
+
+
+def test_failure_parks_run_and_excludes_it_from_next_batch(seeded_registry):
+    def execute(*, run, data_dir):
+        if run["run_key"] == "comp_A_0":
+            raise RuntimeError("boom")
+
+    batch.run_batch(data_dir=Path("/data"), execute=execute)
+
+    parked = registry.load_runs()["comp_A_0"]
+    assert parked["abandoned"] is True
+    assert "RuntimeError: boom" in parked["last_error"]
+    assert parked["status"] == "registered"  # phase preserved for a later retry
+    # excluded from the queue → a re-run does NOT re-attempt it (unbounded-cost guard)
+    assert "comp_A_0" not in [run["run_key"] for run in batch.pending_runs()]
+
+
+def test_retry_abandoned_requeues_parked_runs(seeded_registry):
+    attempts = []
+
+    def execute(*, run, data_dir):
+        attempts.append(run["run_key"])
+        if run["run_key"] == "comp_A_0" and attempts.count("comp_A_0") == 1:
+            raise RuntimeError("transient")
+
+    batch.run_batch(data_dir=Path("/data"), execute=execute)  # comp_A_0 parked
+    assert "comp_A_0" not in [run["run_key"] for run in batch.pending_runs()]
+
+    summary = batch.run_batch(data_dir=Path("/data"), execute=execute, retry_abandoned=True)
+    assert "comp_A_0" in summary["succeeded"]  # re-queued and succeeded on 2nd attempt
+    assert registry.load_runs()["comp_A_0"]["abandoned"] is False
 
 
 def test_terminate_on_done_fires_once_when_flagged(seeded_registry, monkeypatch):

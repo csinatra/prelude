@@ -22,8 +22,12 @@ time wall. Whenever the process exits, that is the signal the run is done and
 the next may start; blocking on it serializes the queue (one GPU = one run at a
 time, so the loop is deliberately serial — no scheduler, no parallelism).
 
-A run that raises is logged and skipped so a single failure never stalls the
-batch (the whole point is to keep the GPU busy).
+A run that raises is parked — marked `abandoned` in the registry with its
+error — and skipped, so a single failure never stalls the batch and, crucially,
+a deterministic failure is not re-attempted on the next invocation (which would
+burn GPU unbounded and keep the box from ever draining to termination). There
+is no automatic retry: fix the root cause, then re-queue parked runs explicitly
+with --retry-abandoned.
 
 Runs on the cloud box only: it executes Docker/AIDE and MLE-bench grading. The
 spec pipeline never runs here (CLAUDE.md core constraint 1) — specs are built
@@ -42,9 +46,10 @@ import os
 import subprocess
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
-from harness import advance, lambda_ctl
+from harness import advance, lambda_ctl, registry
 from harness.registry import load_runs
 
 logger = logging.getLogger("harness.batch")
@@ -65,13 +70,19 @@ class AgentOutputs:
 
 
 def pending_runs() -> list[dict]:
-    """Unfinished runs, grouped by competition then condition then seed.
+    """Unfinished, non-abandoned runs, grouped by competition then condition then seed.
 
     Grouping by competition keeps all of a problem's condition-variants
     contiguous, so a competition's full cross-condition set completes together
-    and can be analyzed without waiting for the rest of the grid.
+    and can be analyzed without waiting for the rest of the grid. Abandoned
+    (parked-failure) runs are excluded so they never re-run automatically;
+    --retry-abandoned clears the flag to re-queue them.
     """
-    unfinished = [run for run in load_runs().values() if run.get("status") != DONE_STATUS]
+    unfinished = [
+        run
+        for run in load_runs().values()
+        if run.get("status") != DONE_STATUS and not run.get("abandoned")
+    ]
     return sorted(
         unfinished, key=lambda run: (run["competition_id"], run["condition"], run["seed"])
     )
@@ -178,23 +189,51 @@ def execute_run(*, run: dict, data_dir: Path) -> dict:
     return advance.record_graded(run_key=run_key, report=report)
 
 
+def _abandon(*, run: dict, error: str) -> None:
+    """Park a failed run: mark it abandoned + record the error, keeping the phase
+    status so a later --retry-abandoned resumes at the right point."""
+    registry.append_run(
+        entry={
+            "run_key": run["run_key"],
+            "abandoned": True,
+            "last_error": error,
+            "abandoned_at": datetime.now(tz=timezone.utc).isoformat(),
+        }
+    )
+
+
+def _clear_abandoned() -> list[str]:
+    """Un-park every abandoned run so pending_runs re-queues it. Operator-driven."""
+    parked = [run["run_key"] for run in load_runs().values() if run.get("abandoned")]
+    for run_key in parked:
+        registry.append_run(entry={"run_key": run_key, "abandoned": False})
+    return parked
+
+
 def run_batch(
     *,
     data_dir: Path,
     terminate_on_done: bool = False,
     instance_id: str | None = None,
+    retry_abandoned: bool = False,
     execute=execute_run,
 ) -> dict:
     """Drain pending runs in sequence; optionally terminate the box afterward.
 
-    Returns a summary dict (attempted / succeeded / failed run_keys). Terminate
-    only fires on normal loop completion — if the loop itself raises, the box is
-    left up for inspection.
+    Returns a summary dict (attempted / succeeded / abandoned run_keys). A failed
+    run is parked (abandoned) with its error and skipped — never auto-retried.
+    Pass retry_abandoned to un-park previously-failed runs first (after fixing
+    the root cause). Terminate only fires on normal loop completion — if the loop
+    itself raises, the box is left up for inspection.
     """
+    if retry_abandoned:
+        cleared = _clear_abandoned()
+        logger.info("retry-abandoned: re-queued %d parked run(s)", len(cleared))
+
     queue = pending_runs()
     logger.info("batch: %d pending run(s)", len(queue))
     succeeded: list[str] = []
-    failed: list[str] = []
+    abandoned: list[str] = []
 
     for run in queue:
         run_key = run["run_key"]
@@ -204,14 +243,17 @@ def run_batch(
             execute(run=run, data_dir=data_dir)
             succeeded.append(run_key)
             logger.info("run %s: graded (%.0fs)", run_key, time.monotonic() - started)
-        except Exception:
-            failed.append(run_key)
+        except Exception as exc:
+            abandoned.append(run_key)
+            _abandon(run=run, error=f"{type(exc).__name__}: {exc}")
             logger.exception(
-                "run %s: failed after %.0fs — skipping", run_key, time.monotonic() - started
+                "run %s: failed after %.0fs — parked (abandoned), skipping",
+                run_key,
+                time.monotonic() - started,
             )
 
-    summary = {"attempted": len(queue), "succeeded": succeeded, "failed": failed}
-    logger.info("batch done: %d ok, %d failed", len(succeeded), len(failed))
+    summary = {"attempted": len(queue), "succeeded": succeeded, "abandoned": abandoned}
+    logger.info("batch done: %d ok, %d abandoned", len(succeeded), len(abandoned))
 
     if terminate_on_done:
         if not instance_id:
@@ -242,6 +284,11 @@ if __name__ == "__main__":
         default=os.environ.get("LAMBDA_INSTANCE_ID"),
         help="Lambda instance id to terminate (from the launch response)",
     )
+    parser.add_argument(
+        "--retry-abandoned",
+        action="store_true",
+        help="re-queue previously-parked (failed) runs before draining",
+    )
     args = parser.parse_args()
     if not args.data_dir:
         raise SystemExit("--data-dir or $MLEBENCH_DATA_DIR is required")
@@ -249,4 +296,5 @@ if __name__ == "__main__":
         data_dir=Path(args.data_dir),
         terminate_on_done=args.terminate_on_done,
         instance_id=args.instance_id,
+        retry_abandoned=args.retry_abandoned,
     )
