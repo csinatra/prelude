@@ -2,10 +2,6 @@
 
 > Read this before writing code in this repo. It overrides any default
 > behavior an agent might bring from training.
->
-> **Note:** there is an unrelated `CLAUDE.md` in the parent
-> `~/Documents/ClaudeWorkspace/` directory for a trading project (Quorum).
-> It does **not** apply here. Ignore it.
 
 ## What this is
 
