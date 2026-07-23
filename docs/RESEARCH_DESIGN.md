@@ -173,9 +173,14 @@ Design notes:
   and Sonnet 5 defaults adaptive thinking ON when `thinking` is omitted, so
   its responses carry a thinking block that trips aideml's single-text-block
   assertion. Haiku 4.5 (prior generation) accepts `temperature` and returns a
-  single text block, so aideml runs pristine (only an httpx<0.28 environment
-  pin, not an aideml patch). This keeps the strongest fidelity story and the
-  lowest per-run cost.
+  single text block, so aideml's code path runs unmodified. Two non-algorithmic
+  fixes are applied (verified end-to-end on-box 2026-07-23): an httpx<0.28
+  environment pin, and a completion of aideml's Anthropic backend — upstream
+  left the function-calling (`func_spec`) path as `NotImplementedError` (which
+  is why mle-bench's own aide/claude pairs an Anthropic code model with a gpt-4o
+  feedback model), so the AIDE review step is implemented via Anthropic tool use
+  to reach parity with aideml's OpenAI backend, keeping the run single-provider
+  on Claude. Haiku keeps the strongest fidelity story and the lowest per-run cost.
 - **Agent capability × structure is a generalizability caveat, not a
   confound.** The downstream C-vs-B gap is measured at Haiku's capability
   point; whether that gap widens or narrows with a stronger agent is

@@ -125,11 +125,12 @@ def test_execute_run_advances_spec_built_through_graded(seeded_registry, monkeyp
     submission.write_text("id,pred\n")
     (tmp_path / "grading_report.json").write_text('{"competition_id": "comp", "score": 0.5}')
 
+    report = tmp_path / "grading_report.json"
     monkeypatch.setattr(batch, "_run_agent", lambda *, run, data_dir: batch.AgentOutputs(
         submission_path=str(submission), journal_path=str(tmp_path / "journal.json"),
         metrics={"steps": 12, "wallclock_secs": 300.0, "time_to_first_valid_secs": 60.0},
     ))
-    monkeypatch.setattr(batch, "_grade", lambda **kw: kw["report_path"])
+    monkeypatch.setattr(batch, "_grade", lambda **kw: report)
 
     batch.execute_run(run=batch.load_runs()["comp_B2_0"], data_dir=Path("/data"))
 
@@ -143,7 +144,8 @@ def test_execute_run_advances_spec_built_through_graded(seeded_registry, monkeyp
 def test_execute_run_condition_a_runs_agent_without_spec(seeded_registry, monkeypatch, tmp_path):
     submission = tmp_path / "submission.csv"
     submission.write_text("id,pred\n")
-    (tmp_path / "grading_report.json").write_text('{"competition_id": "comp", "score": 0.3}')
+    report = tmp_path / "grading_report.json"
+    report.write_text('{"competition_id": "comp", "score": 0.3}')
     seen_spec = {}
 
     def fake_agent(*, run, data_dir):
@@ -151,7 +153,7 @@ def test_execute_run_condition_a_runs_agent_without_spec(seeded_registry, monkey
         return batch.AgentOutputs(submission_path=str(submission), journal_path=None, metrics={})
 
     monkeypatch.setattr(batch, "_run_agent", fake_agent)
-    monkeypatch.setattr(batch, "_grade", lambda **kw: kw["report_path"])
+    monkeypatch.setattr(batch, "_grade", lambda **kw: report)
 
     batch.execute_run(run=batch.load_runs()["comp_A_0"], data_dir=Path("/data"))
 

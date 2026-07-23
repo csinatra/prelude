@@ -17,6 +17,8 @@
 #   - Agent images are pre-built (base mlebench-env, then aide-prelude).
 #   - Kaggle: the pinned kaggle client only accepts a LEGACY-format API token
 #     (kaggle.com > Settings > API); newer tokens 401.
+#   - git-lfs: mle-bench's leaderboards are LFS objects; without a pull they're
+#     pointer files and grading's medal-ranking fails on every competition.
 #   - The base image's heavy-deps stack (tensorflow/torch) fails to build; the
 #     smoke + Lite runs don't need it, so it's off by default here. Real eval
 #     runs that need it must first resolve the heavy-deps build ([confirm]).
@@ -94,10 +96,16 @@ else
   ln -sfn "$RESULTS_DIR" "$WORK_DIR/prelude/results"
 fi
 
+# git-lfs — mle-bench stores per-competition leaderboards in LFS. Without a pull
+# they're pointer files, and grading's medal-ranking asserts ("Leaderboard must
+# have a `score` column") on every competition.
+command -v git-lfs >/dev/null || { sudo apt-get update && sudo apt-get install -y git-lfs; }
+
 # ── mle-bench, pinned ─────────────────────────────────────────────────
 if [ ! -d mle-bench ]; then git clone https://github.com/openai/mle-bench.git; fi
 cd mle-bench
 git fetch --all --quiet && git checkout --quiet "$MLEBENCH_COMMIT"
+git lfs install --local && git lfs pull   # fetch the real leaderboard CSVs
 # venv on 3.11 (a stale 3.10 venv can't install mlebench — rebuild if wrong)
 if [ ! -x .venv/bin/python ] \
    || ! .venv/bin/python -c 'import sys; sys.exit(0 if sys.version_info[:2] >= (3, 11) else 1)'; then
