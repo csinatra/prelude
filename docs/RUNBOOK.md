@@ -121,18 +121,25 @@ competitions and enters the registry via `harness.advance register`
 
 ## 5. Condition runs
 
-Per run: mount the run's spec at `/home/spec/spec.md` inside the agent
-container, full-step variant:
+The spec is injected via the `PRELUDE_SPEC_PATH` env var. `setup_cloudbox.sh`
+patches mle-bench's `agents/run.py` (`run_agent.py` has no `--extra-mount`) with a
+hook: when `PRELUDE_SPEC_PATH` is set, it mounts that file read-only at
+`/home/spec/spec.md`, which `aide-prelude/start.sh` appends as ADVISOR CONTEXT.
+Condition A leaves it unset (stock aide). The batch driver (`harness.batch`) sets
+it per run from `spec_path`; a manual B/C run:
 
 ```bash
-# [confirm on box]: mount mechanism — run_agent.py extra-mount support or
-# docker -v injection; aide-prelude/start.sh appends the file iff present
-run: --agent-id aide-prelude   + mount results/{run_key}/spec.md -> /home/spec/spec.md
+cd ~/work/mle-bench
+echo <competition> > experiments/splits/<run_key>.txt
+PRELUDE_SPEC_PATH=~/work/prelude/results/<run_key>/spec.md \
+  .venv/bin/python run_agent.py --agent-id aide-prelude \
+    --competition-set experiments/splits/<run_key>.txt --data-dir $MLEBENCH_DATA_DIR
 ```
 
-Sanity checks per run, before moving on:
-- container log shows the ADVISOR CONTEXT section appended (absent for A)
-- one AIDE journal + submission.csv landed in the run's output dir
+**[confirm on box]:** the hook is wired and unit-tested, but the B/C spec mount
+hasn't been exercised end-to-end yet (A-style runs are verified). First B/C run,
+check: container log shows the ADVISOR CONTEXT section appended (absent for A),
+and one AIDE journal + submission.csv landed in the run's output dir.
 
 ## 6. Record and grade (box)
 

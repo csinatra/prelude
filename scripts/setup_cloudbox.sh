@@ -106,6 +106,17 @@ if [ ! -d mle-bench ]; then git clone https://github.com/openai/mle-bench.git; f
 cd mle-bench
 git fetch --all --quiet && git checkout --quiet "$MLEBENCH_COMMIT"
 git lfs install --local && git lfs pull   # fetch the real leaderboard CSVs
+
+# PRELUDE spec-mount hook (B/C runs): when PRELUDE_SPEC_PATH is set, mount that
+# spec.md read-only at /home/spec/spec.md so aide-prelude/start.sh appends it as
+# ADVISOR CONTEXT. Orchestration-only, identical across A/B/C. Context-matched
+# (line-number tolerant), idempotent, and fails loudly if the pinned run.py drifts.
+if ! grep -q PRELUDE_SPEC_PATH agents/run.py; then
+  patch -p1 --forward --fuzz=3 \
+    < "$WORK_DIR/prelude/cloudbox/agents/aide-prelude/patches/mlebench-run-spec-mount.patch"
+fi
+grep -q PRELUDE_SPEC_PATH agents/run.py \
+  || { echo "ERROR: spec-mount hook not applied to agents/run.py (patch context drift?)" >&2; exit 1; }
 # venv on 3.11 (a stale 3.10 venv can't install mlebench — rebuild if wrong)
 if [ ! -x .venv/bin/python ] \
    || ! .venv/bin/python -c 'import sys; sys.exit(0 if sys.version_info[:2] >= (3, 11) else 1)'; then

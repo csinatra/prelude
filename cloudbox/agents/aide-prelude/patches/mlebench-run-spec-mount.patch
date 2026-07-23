@@ -1,0 +1,25 @@
+PRELUDE spec-mount hook for mle-bench agents/run.py (pinned 507f92e).
+
+mle-bench builds a fixed two-entry volumes_config (read-only data mounts) with
+no extra-mount seam, and a `volumes` key in --container-config would collide with
+the explicit volumes=. This adds one orchestration hook: if PRELUDE_SPEC_PATH is
+set, mount that spec.md read-only at /home/spec/spec.md, which aide-prelude's
+start.sh appends as ADVISOR CONTEXT (B/C runs). The agent scaffold and grader are
+untouched; the hook is identical across A/B/C, so only the spec content (the
+treatment) varies. Applied by setup_cloudbox.sh with `patch --forward --fuzz`.
+
+--- a/agents/run.py
++++ b/agents/run.py
+@@ -1,7 +1,12 @@
+             "mode": "ro",
+         },
+     }
+
++    import os as _os
++    from pathlib import Path as _Path
++    _prelude_spec = _os.environ.get("PRELUDE_SPEC_PATH")
++    if _prelude_spec:
++        volumes_config[_Path(_prelude_spec).resolve().as_posix()] = {"bind": "/home/spec/spec.md", "mode": "ro"}
+     container = create_competition_container(
+         client=client,
+         competition=competition,

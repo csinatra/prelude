@@ -159,3 +159,44 @@ def test_execute_run_condition_a_runs_agent_without_spec(seeded_registry, monkey
 
     assert seen_spec["spec_path"] is None  # Condition A: no spec mounted
     assert registry.load_runs()["comp_A_0"]["status"] == "graded"
+
+
+# ── _run_agent spec-mount wiring (subprocess/output seams mocked) ─────────
+
+def test_run_agent_sets_spec_env_for_bc(monkeypatch, tmp_path):
+    spec = tmp_path / "spec.md"
+    spec.write_text("ADVISOR CONTEXT\n")
+    captured = {}
+    monkeypatch.setattr(batch, "MLEBENCH_DIR", tmp_path)
+    monkeypatch.setattr(batch.subprocess, "run",
+                        lambda argv, **kw: captured.update(argv=argv, env=kw.get("env")))
+    monkeypatch.setattr(batch, "_locate_outputs",
+                        lambda *, run_output_dir: ("/x/submission.csv", None))
+
+    batch._run_agent(
+        run={"run_key": "comp_C2_0", "competition_id": "comp", "spec_path": str(spec)},
+        data_dir=Path("/data"),
+    )
+    assert captured["env"]["PRELUDE_SPEC_PATH"] == str(spec.resolve())  # B/C: spec mounted
+    assert "--competition-set" in captured["argv"]  # file, not --competition
+
+
+def test_run_agent_no_spec_env_for_a(monkeypatch, tmp_path):
+    captured = {}
+    monkeypatch.setattr(batch, "MLEBENCH_DIR", tmp_path)
+    monkeypatch.setattr(batch.subprocess, "run",
+                        lambda argv, **kw: captured.update(env=kw.get("env")))
+    monkeypatch.setattr(batch, "_locate_outputs", lambda *, run_output_dir: (None, None))
+
+    batch._run_agent(run={"run_key": "comp_A_0", "competition_id": "comp"}, data_dir=Path("/data"))
+    assert "PRELUDE_SPEC_PATH" not in captured["env"]  # Condition A: unset -> stock aide
+
+
+def test_run_agent_missing_spec_raises(monkeypatch, tmp_path):
+    monkeypatch.setattr(batch, "MLEBENCH_DIR", tmp_path)
+    with pytest.raises(RuntimeError, match="spec not found"):
+        batch._run_agent(
+            run={"run_key": "comp_B2_0", "competition_id": "comp",
+                 "spec_path": str(tmp_path / "missing.md")},
+            data_dir=Path("/data"),
+        )

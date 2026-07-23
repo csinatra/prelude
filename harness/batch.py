@@ -100,11 +100,12 @@ def _run_agent(*, run: dict, data_dir: Path) -> AgentOutputs:
 
     mle-bench takes a `--competition-set` FILE (one competition id per line),
     not a `--competition` flag; we give it a per-run split file and a dedicated
-    `--run-dir`. Condition A (no spec_path) is verified. B/C spec injection is
-    the one remaining [confirm on box]: run_agent has no `--extra-mount`, so the
-    spec bind (results/{run_key}/spec.md -> /home/spec/spec.md, keeping the
-    sysbox-runc runtime) must go through `--container-config`, whose bind schema
-    still needs resolving on a first B/C run.
+    `--run-dir`. B/C spec injection: run_agent has no `--extra-mount`, so our
+    setup_cloudbox.sh patches mle-bench's agents/run.py with a hook that mounts
+    the file named by the PRELUDE_SPEC_PATH env var read-only at /home/spec/spec.md
+    (which aide-prelude/start.sh appends as ADVISOR CONTEXT). Condition A leaves
+    the var unset -> stock aide. [confirm on box]: the B/C spec mount is wired but
+    not yet exercised end-to-end (needs a first B/C run with credits).
     """
     run_output_dir = MLEBENCH_DIR / "runs" / f"batch_{run['run_key']}"
     comp_set = MLEBENCH_DIR / "experiments" / "splits" / f"{run['run_key']}.txt"
@@ -118,14 +119,15 @@ def _run_agent(*, run: dict, data_dir: Path) -> AgentOutputs:
         "--data-dir", str(data_dir),
         "--run-dir", str(run_output_dir),
     ]
-    if run.get("spec_path"):
-        raise NotImplementedError(
-            "B/C spec mount via --container-config not verified yet — resolve "
-            "parse_container_config's bind schema on a first B/C run, then wire "
-            "the results/{run_key}/spec.md -> /home/spec/spec.md bind here."
-        )
-    logger.info("agent argv: %s", " ".join(argv))
-    subprocess.run(argv, cwd=MLEBENCH_DIR, check=True)
+    env = os.environ.copy()
+    spec_path = run.get("spec_path")  # relative to the prelude repo = the batch driver's cwd
+    if spec_path:
+        spec_abs = Path(spec_path).resolve()
+        if not spec_abs.is_file():
+            raise RuntimeError(f"{run['run_key']}: spec not found at {spec_abs}")
+        env["PRELUDE_SPEC_PATH"] = str(spec_abs)
+    logger.info("agent argv: %s (spec=%s)", " ".join(argv), env.get("PRELUDE_SPEC_PATH", "-"))
+    subprocess.run(argv, cwd=MLEBENCH_DIR, check=True, env=env)
     submission_path, journal_path = _locate_outputs(run_output_dir=run_output_dir)
     metrics = _read_journal_metrics(journal_path=journal_path) if journal_path else {}
     return AgentOutputs(
