@@ -19,11 +19,15 @@ the per-run artifact directories.
 
 ## 1. Prerequisites
 
-- **Accounts:** GPU provider (single A10/A100-class instance, Ubuntu 22.04+
-  image with NVIDIA drivers + Docker — standard on Lambda/RunPod-style
-  images); Kaggle account (join each competition on kaggle.com first —
-  downloads fail otherwise); Anthropic API key with credits (AIDE's agent
-  calls; budget in [COST_ESTIMATE.md](COST_ESTIMATE.md)).
+- **Accounts:** GPU provider — a **real VM** (single A10/A100-class, Ubuntu
+  22.04, NVIDIA drivers + Docker + passwordless sudo). Lambda A10 is the
+  reference box; it must be a VM, not a container-as-a-service, because
+  mle-bench runs agents in Docker under the Sysbox runtime (`setup_cloudbox.sh`
+  installs Sysbox and Python 3.11). Kaggle account (**join each competition on
+  kaggle.com first**, and use a **legacy-format API token** — Settings → API →
+  the classic `kaggle.json`; the pinned mle-bench Kaggle client 401s on
+  newer-format tokens). Anthropic API key with credits (AIDE's agent calls;
+  budget in [COST_ESTIMATE.md](COST_ESTIMATE.md)).
 - **Persistent volume** attached to the box for prepared competition data
   (`MLEBENCH_DATA_DIR`). Rent compute per-run; keep the volume. Never
   re-download data because an instance was released.
@@ -62,9 +66,15 @@ set -a && . ~/work/prelude/.env.cloudbox && set +a
 ~/work/prelude/scripts/setup_cloudbox.sh
 ```
 
-The script preflights GPU/Docker, clones mle-bench at the pinned commit,
-installs it, symlinks `cloudbox/agents/aide-prelude` into mle-bench's agents
-dir, and symlinks `results/` onto the persistent volume
+The script is idempotent and does the full bring-up: Docker/GPU preflight (with
+a clear message if you still need `sudo usermod -aG docker $USER` + re-login),
+**Python 3.11** (Lambda Stack ships 3.10; mle-bench needs ≥3.11), the **Sysbox
+runtime**, the mle-bench clone at the pinned commit installed in a 3.11 venv,
+**copies** `cloudbox/agents/aide-prelude` into mle-bench's agents dir (a
+symlink is invisible to mle-bench's glob-based registry on Python <3.13), and
+builds the **base `mlebench-env`** (loading `$MLEBENCH_DATA_DIR/mlebench-env.tar.gz`
+if you saved one, else building with heavy deps off) and the **`aide-prelude`
+agent** images. It also symlinks `results/` onto the persistent volume
 (`$MLEBENCH_DATA_DIR/prelude-results`) so the registry, artifacts, and failure
 logs survive instance termination — without this, `--terminate-on-done` would
 destroy the run state it just produced. Then prepare each competition onto the
@@ -81,15 +91,26 @@ First agent run is a wiring check, not a data point. Use
 `random-acts-of-pizza` — reserved as the off-eval integration competition
 (excluded from the eval subset; small text task, description already local) —
 with the `aide-prelude/dev` 8-step variant and **no spec mounted**
-(byte-identical to stock AIDE). Launch per mle-bench's README (`run_agent.py`
-with `--agent-id aide-prelude/dev`).
-**[confirm on box]:** exact flags; that the agent image builds cleanly
-from our forked dir; and that aideml v6.3.3's Anthropic backend accepts
-the configured model id. If `claude-sonnet-5` isn't supported, drop to
-the newest Sonnet it accepts — the hard requirement is one pinned model
-for every run in the grid, not a particular version (see the note in
-`cloudbox/agents/aide-prelude/config.yaml`); record the final choice in
-RESEARCH_DESIGN.md before eval runs.
+(byte-identical to stock AIDE):
+
+```bash
+cd ~/work/mle-bench
+mkdir -p experiments/splits
+echo random-acts-of-pizza > experiments/splits/random-acts-of-pizza.txt
+.venv/bin/python run_agent.py --agent-id aide-prelude/dev \
+    --competition-set experiments/splits/random-acts-of-pizza.txt \
+    --data-dir $MLEBENCH_DATA_DIR
+```
+
+mle-bench takes a `--competition-set` file (one competition id per line), not a
+single `--competition` flag. The **agent-model question is resolved**
+(2026-07-22): the pin is `claude-haiku-4-5-20251001`, aideml v6.3.3 pristine —
+the 5-family/Opus-4.7+ reject `temperature` and Sonnet 5 defaults thinking on
+(breaking aideml's response parsing), while Haiku 4.5 runs it unmodified. See
+`cloudbox/agents/aide-prelude/config.yaml` and RESEARCH_DESIGN.md. Inspect the
+run's `run.log` under `runs/<group>/<comp>_<uuid>/`: a clean run gets past AIDE
+drafting into code execution across its 8 steps and lands a `submission.csv` +
+AIDE journal in the run's output dir.
 
 Discard the smoke result: the 8-step dev budget is too short to be a valid
 Condition A run, and the competition is off-eval by design. The matched-A

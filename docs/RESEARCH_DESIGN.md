@@ -147,11 +147,43 @@ Design notes:
   matrix. Built to run at full scale; the harness defaults to the pilot
   subset.
 - AIDE scaffold, agent model, and MLE-bench grading are held constant across
-  all run conditions.
-- **Spec-pipeline eval model pinned (2026-07-19):** `EVAL_MODEL =
-  claude-sonnet-5` (`pipeline/config.py`) for all eval-run spec builds;
-  distinct from the AIDE agent-model pin, which is finalized on-box per the
-  aideml-support note (2026-07-17) before eval runs.
+  all run conditions (A/B/C). This constancy is what makes the matched-A
+  baseline valid and the B-vs-C contrast clean: the only manipulated variable
+  across the grid is the injected spec. **Condition A guardrail:** A must use
+  this same pinned agent (the shared `aide-prelude` image, no spec mounted) —
+  never re-matched to a published external baseline, which is the model
+  mismatch the H1 amendment corrected.
+- **Two model roles, pinned separately (a deliberate advisor/executor
+  split).** The *spec pipeline* — C's staged retrieval, decomposition, and
+  opinionated recommendations — runs on `EVAL_MODEL = claude-sonnet-5`
+  (`pipeline/config.py`, pinned 2026-07-19), a strong reasoner; its output is
+  identical whether the downstream agent is weak or strong. The *AIDE agent*
+  that consumes the injected spec runs on `claude-haiku-4-5-20251001`
+  (resolved 2026-07-22). Using different models for "author the specification"
+  and "implement against it" is a standard, realistic architecture, not a
+  compromise — and both models are held constant across A/B/C, so the split
+  cannot confound the B-vs-C comparison. The agent-model choice therefore
+  bears **only on the secondary (downstream MLE-bench) signal**, never on the
+  primary mechanistic spec-quality judging, which scores the specs directly
+  and is agent-independent.
+- **Why Haiku for the agent (2026-07-22).** The pinned agent is
+  `thesofakillers/aideml@v6.3.3` (mle-bench's designated fork, 2024), which
+  cannot drive the current top models unmodified: the 5-family and Opus
+  4.7/4.8 removed the `temperature` parameter aideml always sends (HTTP 400),
+  and Sonnet 5 defaults adaptive thinking ON when `thinking` is omitted, so
+  its responses carry a thinking block that trips aideml's single-text-block
+  assertion. Haiku 4.5 (prior generation) accepts `temperature` and returns a
+  single text block, so aideml runs pristine (only an httpx<0.28 environment
+  pin, not an aideml patch). This keeps the strongest fidelity story and the
+  lowest per-run cost.
+- **Agent capability × structure is a generalizability caveat, not a
+  confound.** The downstream C-vs-B gap is measured at Haiku's capability
+  point; whether that gap widens or narrows with a stronger agent is
+  theoretically ambiguous (structure-substitution at the strong end vs
+  execution-gating at the weak end) and is **future work** — a capability
+  sweep (Haiku → Sonnet-5-thinking-off → Sonnet-5-thinking-on) directly probes
+  it. The Sonnet-5 path is a bounded one-switch adapter (`thinking: disabled`
+  + drop `temperature`), reserved for that sweep, not the default arm.
 
 ## Corpus construction
 
