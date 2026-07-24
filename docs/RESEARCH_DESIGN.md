@@ -243,8 +243,16 @@ agent cycles relative to B:
   time-to-first-valid-submission, and per-step score/time curves derived
   from the AIDE journal — enabling trajectory comparison across conditions
   and problem types. Per-step agent *token* usage is not in AIDE's journal
-  by default; a behavior-neutral logging patch to the aide-prelude variant
-  (identical across all conditions) is a noted container-side follow-up.
+  by default; the aide-prelude Anthropic backend appends each call's usage
+  (in/out/cache tokens + timestamps) to `prelude_token_usage.jsonl`, a
+  behavior-neutral side-channel identical across all conditions —
+  correlated to journal node ctimes offline for per-step attribution.
+
+All agent-side artifacts (submission, journal, final solution code, token
+log) are copied off the ephemeral mle-bench run dir onto the persistent
+volume (`analysis.artifacts.preserve_agent_outputs`, called by the batch
+driver) so `--terminate-on-done` never destroys the mechanistic-judge
+inputs — the registry alone keeps only outcome fields.
 
 ## Mechanistic evaluation
 

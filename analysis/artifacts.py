@@ -10,8 +10,17 @@ eval outputs):
     ├── llm_usage.json     # per-call spec-build usage (written by harness.runner;
     │                      #   call order == stage order, sequential nodes)
     ├── manifest.json      # provenance: git commit (pins prompts/config), model, timestamp
-    ├── submission.csv     # copied final submission (when available)
-    └── trajectory.log     # copied agent trajectory/logs (when available)
+    ├── submission.csv     # copied final submission (agent side)
+    ├── journal.json       # copied AIDE journal — per-step trajectory (agent side)
+    ├── best_solution.py   # copied final/best solution code — judge + evidence mining
+    └── prelude_token_usage.jsonl  # per-call agent token usage (agent side, when logged)
+
+Two write paths feed this dir. The spec side (save_artifacts, on the dev
+machine) writes the top block. The agent side (preserve_agent_outputs, on the
+cloud box after an AIDE run) copies the bottom block off the ephemeral mle-bench
+run dir onto the persistent volume that results/ is symlinked to — without it,
+--terminate-on-done destroys the journal + solution the mechanistic judge needs,
+keeping only the outcome fields already in the registry.
 
 LangSmith traces are ephemeral (14-day retention on the base tier); this
 directory is the durable research record. spec.md holds the exact injected
@@ -79,4 +88,37 @@ def save_artifacts(
         shutil.copy(src=submission_path, dst=run_dir / "submission.csv")
     if trajectory_path is not None:
         shutil.copy(src=trajectory_path, dst=run_dir / "trajectory.log")
+    return run_dir
+
+
+def preserve_agent_outputs(
+    *,
+    run_key: str,
+    submission_path: str | Path | None = None,
+    journal_path: str | Path | None = None,
+    solution_path: str | Path | None = None,
+    extra_paths: tuple[str | Path | None, ...] = (),
+) -> Path:
+    """Copy an AIDE run's outputs into its artifact dir on durable storage.
+
+    Runs on the cloud box after the agent, where mle-bench writes these under an
+    ephemeral run dir; results/ is symlinked to the persistent volume, so this
+    copy is what survives instance termination (the mechanistic judge reads the
+    solution + journal here, offline). Creates the dir — Condition A has no
+    spec-side artifacts to seed it. Best-effort per file: a missing optional
+    output (e.g. a buggy run with no submission) still preserves the rest.
+    """
+    run_dir = RESULTS_DIR / run_key
+    run_dir.mkdir(parents=True, exist_ok=True)
+    named = {
+        "submission.csv": submission_path,
+        "journal.json": journal_path,
+        "best_solution.py": solution_path,
+    }
+    for dst_name, src in named.items():
+        if src is not None and Path(src).is_file():
+            shutil.copy(src=src, dst=run_dir / dst_name)
+    for src in extra_paths:
+        if src is not None and Path(src).is_file():
+            shutil.copy(src=src, dst=run_dir / Path(src).name)
     return run_dir

@@ -126,6 +126,7 @@ def test_execute_run_advances_spec_built_through_graded(seeded_registry, monkeyp
     (tmp_path / "grading_report.json").write_text('{"competition_id": "comp", "score": 0.5}')
 
     report = tmp_path / "grading_report.json"
+    monkeypatch.setattr(batch.artifacts, "RESULTS_DIR", tmp_path / "results")
     monkeypatch.setattr(batch, "_run_agent", lambda *, run, data_dir: batch.AgentOutputs(
         submission_path=str(submission), journal_path=str(tmp_path / "journal.json"),
         metrics={"steps": 12, "wallclock_secs": 300.0, "time_to_first_valid_secs": 60.0},
@@ -152,6 +153,7 @@ def test_execute_run_condition_a_runs_agent_without_spec(seeded_registry, monkey
         seen_spec["spec_path"] = run.get("spec_path")
         return batch.AgentOutputs(submission_path=str(submission), journal_path=None, metrics={})
 
+    monkeypatch.setattr(batch.artifacts, "RESULTS_DIR", tmp_path / "results")
     monkeypatch.setattr(batch, "_run_agent", fake_agent)
     monkeypatch.setattr(batch, "_grade", lambda **kw: report)
 
@@ -171,7 +173,7 @@ def test_run_agent_sets_spec_env_for_bc(monkeypatch, tmp_path):
     monkeypatch.setattr(batch.subprocess, "run",
                         lambda argv, **kw: captured.update(argv=argv, env=kw.get("env")))
     monkeypatch.setattr(batch, "_locate_outputs",
-                        lambda *, run_output_dir: ("/x/submission.csv", None))
+                        lambda *, run_output_dir: ("/x/submission.csv", None, None, None))
 
     batch._run_agent(
         run={"run_key": "comp_C2_0", "competition_id": "comp", "spec_path": str(spec)},
@@ -181,12 +183,43 @@ def test_run_agent_sets_spec_env_for_bc(monkeypatch, tmp_path):
     assert "--competition-set" in captured["argv"]  # file, not --competition
 
 
+def test_execute_run_preserves_agent_artifacts_to_volume(seeded_registry, monkeypatch, tmp_path):
+    # mle-bench writes these under an ephemeral run dir; execute_run must copy
+    # them into results/{run_key}/ (the persistent volume) so --terminate-on-done
+    # can't destroy the mechanistic-judge inputs.
+    src = tmp_path / "rundir"
+    src.mkdir()
+    for name, body in [
+        ("submission.csv", "id,pred\n"), ("journal.json", "{}"),
+        ("best_solution.py", "print(1)\n"), ("prelude_token_usage.jsonl", "{}\n"),
+    ]:
+        (src / name).write_text(body)
+    report = tmp_path / "grading_report.json"
+    report.write_text('{"competition_id": "comp", "score": 0.5}')
+
+    monkeypatch.setattr(batch.artifacts, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr(batch, "_run_agent", lambda *, run, data_dir: batch.AgentOutputs(
+        submission_path=str(src / "submission.csv"), journal_path=str(src / "journal.json"),
+        metrics={"steps": 8}, solution_path=str(src / "best_solution.py"),
+        token_usage_path=str(src / "prelude_token_usage.jsonl"),
+    ))
+    monkeypatch.setattr(batch, "_grade", lambda **kw: report)
+
+    batch.execute_run(run=batch.load_runs()["comp_B2_0"], data_dir=Path("/data"))
+
+    preserved = tmp_path / "results" / "comp_B2_0"
+    assert (preserved / "submission.csv").exists()
+    assert (preserved / "journal.json").exists()
+    assert (preserved / "best_solution.py").exists()      # judge input
+    assert (preserved / "prelude_token_usage.jsonl").exists()  # agent cost ledger
+
+
 def test_run_agent_no_spec_env_for_a(monkeypatch, tmp_path):
     captured = {}
     monkeypatch.setattr(batch, "MLEBENCH_DIR", tmp_path)
     monkeypatch.setattr(batch.subprocess, "run",
                         lambda argv, **kw: captured.update(env=kw.get("env")))
-    monkeypatch.setattr(batch, "_locate_outputs", lambda *, run_output_dir: (None, None))
+    monkeypatch.setattr(batch, "_locate_outputs", lambda *, run_output_dir: (None, None, None, None))
 
     batch._run_agent(run={"run_key": "comp_A_0", "competition_id": "comp"}, data_dir=Path("/data"))
     assert "PRELUDE_SPEC_PATH" not in captured["env"]  # Condition A: unset -> stock aide

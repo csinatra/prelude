@@ -1,19 +1,29 @@
 # PATCHED COPY of aideml v6.3.3 `aide/backend/backend_anthropic.py`
 # (github.com/thesofakillers/aideml @ v6.3.3, MIT — see ACKNOWLEDGMENTS.md).
 #
-# Sole change vs upstream: the `func_spec` path. Upstream leaves it as
-#   `raise NotImplementedError("Anthropic does not support function calling
-#   for now.")`
-# which makes AIDE's execution-review step (parse_exec_result) fail on any
-# Claude model — the reason mle-bench's own aide/claude agent runs the *code*
-# model on Anthropic but the *feedback* model on gpt-4o. Here we implement the
-# path via Anthropic tool use, reaching parity with aideml's OpenAI backend so
-# the whole AIDE loop runs single-provider on Claude. This completes an
-# unimplemented method against aideml's existing FunctionSpec contract; it does
-# not alter AIDE's search/coding algorithm. The Dockerfile overlays this file
-# onto the pip-installed aideml (resolved on-box 2026-07-23).
+# Two changes vs upstream, neither of which alters AIDE's search/coding
+# algorithm; the Dockerfile overlays this file onto the pip-installed aideml.
+#
+# (1) The `func_spec` path (resolved on-box 2026-07-23). Upstream leaves it as
+#     `raise NotImplementedError("Anthropic does not support function calling
+#     for now.")`, which makes AIDE's execution-review step (parse_exec_result)
+#     fail on any Claude model — the reason mle-bench's own aide/claude agent
+#     runs the *code* model on Anthropic but the *feedback* model on gpt-4o.
+#     Here we implement it via Anthropic tool use, reaching parity with aideml's
+#     OpenAI backend so the whole AIDE loop runs single-provider on Claude.
+#
+# (2) Per-call token-usage side-channel (2026-07-24). aideml already computes
+#     in/out tokens from message.usage and returns them, but never persists them
+#     to the journal (per-step agent cost is otherwise unrecoverable). We append
+#     each call's usage + timestamps to $LOGS_DIR/prelude_token_usage.jsonl for
+#     post-run per-step attribution (correlated to journal node ctimes offline).
+#     Best-effort and identical across all conditions: it only READS usage the
+#     SDK already returns and appends to a file — it never changes what query()
+#     returns or how AIDE behaves, and a logging failure is swallowed.
 """Backend for Anthropic API."""
 
+import json
+import os
 import time
 import logging
 
@@ -22,6 +32,29 @@ from .utils import FunctionSpec, OutputType, backoff_create, opt_messages_to_lis
 from funcy import notnone, once, select_values
 
 logger = logging.getLogger("aide")
+
+
+def _log_token_usage(*, model, usage, t_start, t_end, stop_reason) -> None:
+    """Append one call's token usage to $LOGS_DIR/prelude_token_usage.jsonl.
+
+    Behavior-neutral: reads only usage the SDK already returned. Best-effort —
+    swallows every error so logging can never perturb the agent run."""
+    try:
+        record = {
+            "t_start": t_start,
+            "t_end": t_end,
+            "model": model,
+            "input_tokens": usage.input_tokens,
+            "output_tokens": usage.output_tokens,
+            "cache_creation_input_tokens": getattr(usage, "cache_creation_input_tokens", None),
+            "cache_read_input_tokens": getattr(usage, "cache_read_input_tokens", None),
+            "stop_reason": stop_reason,
+        }
+        path = os.path.join(os.environ.get("LOGS_DIR", "."), "prelude_token_usage.jsonl")
+        with open(path, "a") as fh:
+            fh.write(json.dumps(record) + "\n")
+    except Exception:
+        pass  # logging must never affect the agent run
 
 _client: anthropic.Anthropic = None  # type: ignore
 
@@ -103,5 +136,13 @@ def query(
     info = {
         "stop_reason": message.stop_reason,
     }
+
+    _log_token_usage(
+        model=filtered_kwargs.get("model"),
+        usage=message.usage,
+        t_start=t0,
+        t_end=t0 + req_time,
+        stop_reason=message.stop_reason,
+    )
 
     return output, req_time, in_tokens, out_tokens, info

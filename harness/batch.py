@@ -50,6 +50,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from analysis import artifacts
 from harness import advance, lambda_ctl, registry
 from harness.registry import load_runs
 
@@ -68,6 +69,8 @@ class AgentOutputs:
     submission_path: str | None
     journal_path: str | None
     metrics: dict
+    solution_path: str | None = None
+    token_usage_path: str | None = None
 
 
 def pending_runs() -> list[dict]:
@@ -128,23 +131,38 @@ def _run_agent(*, run: dict, data_dir: Path) -> AgentOutputs:
         env["PRELUDE_SPEC_PATH"] = str(spec_abs)
     logger.info("agent argv: %s (spec=%s)", " ".join(argv), env.get("PRELUDE_SPEC_PATH", "-"))
     subprocess.run(argv, cwd=MLEBENCH_DIR, check=True, env=env)
-    submission_path, journal_path = _locate_outputs(run_output_dir=run_output_dir)
+    submission_path, journal_path, solution_path, token_usage_path = _locate_outputs(
+        run_output_dir=run_output_dir
+    )
     metrics = _read_journal_metrics(journal_path=journal_path) if journal_path else {}
     return AgentOutputs(
-        submission_path=submission_path, journal_path=journal_path, metrics=metrics
+        submission_path=submission_path,
+        journal_path=journal_path,
+        metrics=metrics,
+        solution_path=solution_path,
+        token_usage_path=token_usage_path,
     )
 
 
-def _locate_outputs(*, run_output_dir: Path) -> tuple[str | None, str | None]:
-    """(submission.csv, journal.json) from a completed run-dir.
+def _locate_outputs(
+    *, run_output_dir: Path
+) -> tuple[str | None, str | None, str | None, str | None]:
+    """(submission.csv, journal.json, best_solution.py, prelude_token_usage.jsonl).
 
-    mle-bench writes <run-dir>/<group>/<competition>_<uuid>/ with
-    submission/submission.csv and logs/journal.json. Glob so we don't depend on
-    the exact group/uuid nesting; None for whichever is absent (e.g. a run that
-    produced no submission)."""
-    submission = next(run_output_dir.glob("**/submission/submission.csv"), None)
-    journal = next(run_output_dir.glob("**/logs/journal.json"), None)
-    return (str(submission) if submission else None, str(journal) if journal else None)
+    mle-bench writes <run-dir>/<group>/<competition>_<uuid>/ with submission/,
+    logs/, and code/. Glob so we don't depend on the exact group/uuid nesting;
+    None for whichever is absent (e.g. a buggy run with no submission). The
+    solution falls back to code/solution.py if the best_solution snapshot is
+    missing; the token log is the agent-side usage side-channel."""
+    def find(pattern: str) -> str | None:
+        hit = next(run_output_dir.glob(pattern), None)
+        return str(hit) if hit else None
+
+    submission = find("**/submission/submission.csv")
+    journal = find("**/logs/journal.json")
+    solution = find("**/logs/best_solution.py") or find("**/code/solution.py")
+    token_usage = find("**/logs/prelude_token_usage.jsonl")
+    return (submission, journal, solution, token_usage)
 
 
 def _read_journal_metrics(*, journal_path: str) -> dict:
@@ -209,6 +227,17 @@ def execute_run(*, run: dict, data_dir: Path) -> dict:
     if run.get("status") in NEEDS_AGENT_STATUSES:
         outputs = _run_agent(run=run, data_dir=data_dir)
         submission_path = outputs.submission_path
+        # Preserve agent outputs onto the persistent volume BEFORE grading: the
+        # mle-bench run dir is on the ephemeral boot disk, so without this copy
+        # --terminate-on-done would destroy the journal + solution the
+        # mechanistic judge needs (the registry keeps only outcome fields).
+        artifacts.preserve_agent_outputs(
+            run_key=run_key,
+            submission_path=outputs.submission_path,
+            journal_path=outputs.journal_path,
+            solution_path=outputs.solution_path,
+            extra_paths=(outputs.token_usage_path,),
+        )
         advance.record_agent_run(
             run_key=run_key,
             submission_path=outputs.submission_path,
