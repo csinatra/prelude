@@ -3,3 +3,11 @@
 # https://github.com/openai/mle-bench/blob/507f92e1138bb6e40dac5c6ee7a6758e6424bf97/agents/README.md),
 # inherited verbatim — not an independent dependency choice. See ACKNOWLEDGMENTS.md.
 git+https://github.com/thesofakillers/aideml@v6.3.3
+
+# Environment fix, not an aideml patch: aideml v6.3.3's pinned (2024) anthropic
+# SDK passes `proxies=` to httpx.Client, which httpx 0.28 (Nov 2024) removed —
+# a fresh install otherwise pulls httpx>=0.28 and every agent call dies with
+# `Client.__init__() got an unexpected keyword argument 'proxies'`. Pinning the
+# last 0.27.x restores the environment aideml shipped against. (Resolved on-box
+# 2026-07-22.)
+httpx==0.27.2

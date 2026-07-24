@@ -41,6 +41,7 @@ covered by tests with those seams mocked.
 """
 
 import argparse
+import json
 import logging
 import os
 import subprocess
@@ -49,6 +50,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from analysis import artifacts
 from harness import advance, lambda_ctl, registry
 from harness.registry import load_runs
 
@@ -67,6 +69,8 @@ class AgentOutputs:
     submission_path: str | None
     journal_path: str | None
     metrics: dict
+    solution_path: str | None = None
+    token_usage_path: str | None = None
 
 
 def pending_runs() -> list[dict]:
@@ -88,7 +92,7 @@ def pending_runs() -> list[dict]:
     )
 
 
-# ── box seams: verify on the first smoke run ([confirm on box]) ──────────
+# ── box seams (interface confirmed on the smoke run 2026-07-23) ──────────
 
 def _run_agent(*, run: dict, data_dir: Path) -> AgentOutputs:
     """Launch one full AIDE run via mle-bench; block until it exits.
@@ -97,65 +101,120 @@ def _run_agent(*, run: dict, data_dir: Path) -> AgentOutputs:
     (or the time wall) — that exit is the completion signal serializing the
     queue. The step/time budget is the agent config's, not set here.
 
-    [confirm on box]: exact run_agent.py flags, the spec-mount mechanism, and
-    the output directory layout. Condition A (no spec_path) runs with no spec
-    mounted (stock aide); B/C mount results/{run_key}/spec.md at
-    /home/spec/spec.md, which aide-prelude/start.sh appends as ADVISOR CONTEXT.
+    mle-bench takes a `--competition-set` FILE (one competition id per line),
+    not a `--competition` flag; we give it a per-run split file and a dedicated
+    `--run-dir`. B/C spec injection: run_agent has no `--extra-mount`, so our
+    setup_cloudbox.sh patches mle-bench's agents/run.py with a hook that mounts
+    the file named by the PRELUDE_SPEC_PATH env var read-only at /home/spec/spec.md
+    (which aide-prelude/start.sh appends as ADVISOR CONTEXT). Condition A leaves
+    the var unset -> stock aide. [confirm on box]: the B/C spec mount is wired but
+    not yet exercised end-to-end (needs a first B/C run with credits).
     """
-    spec_path = run.get("spec_path")
+    run_output_dir = MLEBENCH_DIR / "runs" / f"batch_{run['run_key']}"
+    comp_set = MLEBENCH_DIR / "experiments" / "splits" / f"{run['run_key']}.txt"
+    comp_set.parent.mkdir(parents=True, exist_ok=True)
+    comp_set.write_text(run["competition_id"] + "\n")
+
     argv = [
         "python", "run_agent.py",
         "--agent-id", run.get("agent_id", "aide-prelude"),
-        "--competition", run["competition_id"],
+        "--competition-set", str(comp_set),
         "--data-dir", str(data_dir),
+        "--run-dir", str(run_output_dir),
     ]
+    env = os.environ.copy()
+    spec_path = run.get("spec_path")  # relative to the prelude repo = the batch driver's cwd
     if spec_path:
-        argv += ["--extra-mount", f"{spec_path}:/home/spec/spec.md"]
-    logger.info("agent argv: %s", " ".join(argv))
-    subprocess.run(argv, cwd=MLEBENCH_DIR, check=True)
-    submission_path, journal_path = _locate_outputs(run_key=run["run_key"])
+        spec_abs = Path(spec_path).resolve()
+        if not spec_abs.is_file():
+            raise RuntimeError(f"{run['run_key']}: spec not found at {spec_abs}")
+        env["PRELUDE_SPEC_PATH"] = str(spec_abs)
+    logger.info("agent argv: %s (spec=%s)", " ".join(argv), env.get("PRELUDE_SPEC_PATH", "-"))
+    subprocess.run(argv, cwd=MLEBENCH_DIR, check=True, env=env)
+    submission_path, journal_path, solution_path, token_usage_path = _locate_outputs(
+        run_output_dir=run_output_dir
+    )
     metrics = _read_journal_metrics(journal_path=journal_path) if journal_path else {}
     return AgentOutputs(
-        submission_path=submission_path, journal_path=journal_path, metrics=metrics
+        submission_path=submission_path,
+        journal_path=journal_path,
+        metrics=metrics,
+        solution_path=solution_path,
+        token_usage_path=token_usage_path,
     )
 
 
-def _locate_outputs(*, run_key: str) -> tuple[str | None, str | None]:
-    """(submission.csv, journal) paths from the agent run's output dir.
+def _locate_outputs(
+    *, run_output_dir: Path
+) -> tuple[str | None, str | None, str | None, str | None]:
+    """(submission.csv, journal.json, best_solution.py, prelude_token_usage.jsonl).
 
-    [confirm on box]: mle-bench writes a per-run output dir (best_submission +
-    AIDE journal). Resolve the real layout on the smoke run and return the two
-    paths; None for whichever is absent (e.g. a run that made no submission).
-    """
-    raise NotImplementedError("resolve mle-bench output layout on the smoke run")
+    mle-bench writes <run-dir>/<group>/<competition>_<uuid>/ with submission/,
+    logs/, and code/. Glob so we don't depend on the exact group/uuid nesting;
+    None for whichever is absent (e.g. a buggy run with no submission). The
+    solution falls back to code/solution.py if the best_solution snapshot is
+    missing; the token log is the agent-side usage side-channel."""
+    def find(pattern: str) -> str | None:
+        hit = next(run_output_dir.glob(pattern), None)
+        return str(hit) if hit else None
+
+    submission = find("**/submission/submission.csv")
+    journal = find("**/logs/journal.json")
+    solution = find("**/logs/best_solution.py") or find("**/code/solution.py")
+    token_usage = find("**/logs/prelude_token_usage.jsonl")
+    return (submission, journal, solution, token_usage)
 
 
 def _read_journal_metrics(*, journal_path: str) -> dict:
     """steps / wallclock / time-to-first-valid from the AIDE journal.
 
-    [confirm on box]: parse the journal schema for the efficiency ledger
-    (RESEARCH_DESIGN.md). Defensive — missing keys return None, never raise, so
-    a schema surprise degrades to a graded run with blank timing, not a lost
-    batch.
-    """
-    raise NotImplementedError("parse the AIDE journal schema on the smoke run")
+    Journal is {"nodes": [{"step", "ctime", "exec_time", "metric", "is_buggy",
+    ...}]}. Defensive — any schema surprise returns {}, never raises, so a graded
+    run keeps its score even if timing can't be parsed."""
+    try:
+        nodes = json.loads(Path(journal_path).read_text()).get("nodes", [])
+        ctimes = [n["ctime"] for n in nodes if "ctime" in n]
+        if not ctimes:
+            return {"steps": len(nodes)}
+        start = min(ctimes)
+        first_valid = next((n["ctime"] for n in nodes if not n.get("is_buggy")), None)
+        return {
+            "steps": len(nodes),
+            "wallclock_secs": round(max(ctimes) - start, 3),
+            "time_to_first_valid_secs": round(first_valid - start, 3)
+            if first_valid is not None
+            else None,
+        }
+    except Exception:
+        logger.exception("journal parse failed: %s", journal_path)
+        return {}
 
 
-def _grade(*, run: dict, submission_path: str, data_dir: Path, report_path: Path) -> Path:
+def _grade(*, run: dict, submission_path: str, data_dir: Path, report_dir: Path) -> Path:
     """Grade one submission with mle-bench; return the grading_report.json path.
 
-    [confirm on box]: exact `mlebench grade` flags and report output path.
-    """
+    `mlebench grade` takes a JSONL (one {competition_id, submission_path} per
+    line) via --submission and writes a timestamped grading_report.json into
+    --output-dir. Requires the mle-bench leaderboards pulled from git-lfs
+    (setup_cloudbox.sh) or medal-ranking asserts on a missing `score` column."""
+    report_dir.mkdir(parents=True, exist_ok=True)
+    jsonl = report_dir / "submission.jsonl"
+    jsonl.write_text(
+        json.dumps({"competition_id": run["competition_id"], "submission_path": submission_path})
+        + "\n"
+    )
     argv = [
         ".venv/bin/mlebench", "grade",
-        "--submission", submission_path,
-        "--competition", run["competition_id"],
+        "--submission", str(jsonl),
+        "--output-dir", str(report_dir),
         "--data-dir", str(data_dir),
-        "--output", str(report_path),
     ]
     logger.info("grade argv: %s", " ".join(argv))
     subprocess.run(argv, cwd=MLEBENCH_DIR, check=True)
-    return report_path
+    report = next(report_dir.glob("*grading_report.json"), None)
+    if report is None:
+        raise RuntimeError(f"no grading report written to {report_dir}")
+    return report
 
 
 # ── orchestration ───────────────────────────────────────────────────────
@@ -168,6 +227,17 @@ def execute_run(*, run: dict, data_dir: Path) -> dict:
     if run.get("status") in NEEDS_AGENT_STATUSES:
         outputs = _run_agent(run=run, data_dir=data_dir)
         submission_path = outputs.submission_path
+        # Preserve agent outputs onto the persistent volume BEFORE grading: the
+        # mle-bench run dir is on the ephemeral boot disk, so without this copy
+        # --terminate-on-done would destroy the journal + solution the
+        # mechanistic judge needs (the registry keeps only outcome fields).
+        artifacts.preserve_agent_outputs(
+            run_key=run_key,
+            submission_path=outputs.submission_path,
+            journal_path=outputs.journal_path,
+            solution_path=outputs.solution_path,
+            extra_paths=(outputs.token_usage_path,),
+        )
         advance.record_agent_run(
             run_key=run_key,
             submission_path=outputs.submission_path,
@@ -181,8 +251,10 @@ def execute_run(*, run: dict, data_dir: Path) -> dict:
     if not submission_path:
         raise RuntimeError(f"{run_key}: no submission to grade")
 
-    report_path = Path(submission_path).parent / "grading_report.json"
-    _grade(run=run, submission_path=submission_path, data_dir=data_dir, report_path=report_path)
+    report_dir = Path(submission_path).parent.parent / "grade"
+    report_path = _grade(
+        run=run, submission_path=submission_path, data_dir=data_dir, report_dir=report_dir
+    )
     report = advance._report_for(
         report_path=report_path, run_key=run_key, competition_id=run["competition_id"]
     )

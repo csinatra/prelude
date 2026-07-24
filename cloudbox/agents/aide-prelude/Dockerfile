@@ -30,3 +30,12 @@ RUN conda run -n ${CONDA_ENV_NAME} pip install -r ${AGENT_DIR}/requirements.txt 
 
 # put all the agent files in the expected location
 COPY . ${AGENT_DIR}
+
+# Overlay our patched aideml Anthropic backend onto the pip-installed copy:
+# implements the func_spec (function-calling) path upstream left as
+# NotImplementedError, so the AIDE feedback step runs single-provider on Claude.
+# Finds the installed file by import so there's no hardcoded site-packages path.
+# See patches/backend_anthropic.py for the full file + what changed vs upstream.
+RUN conda run -n ${CONDA_ENV_NAME} python -c \
+    "import aide.backend.backend_anthropic as m, shutil; \
+     shutil.copyfile('${AGENT_DIR}/patches/backend_anthropic.py', m.__file__)"
