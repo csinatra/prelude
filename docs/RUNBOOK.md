@@ -136,10 +136,11 @@ PRELUDE_SPEC_PATH=~/work/prelude/results/<run_key>/spec.md \
     --competition-set experiments/splits/<run_key>.txt --data-dir $MLEBENCH_DATA_DIR
 ```
 
-**[confirm on box]:** the hook is wired and unit-tested, but the B/C spec mount
-hasn't been exercised end-to-end yet (A-style runs are verified). First B/C run,
-check: container log shows the ADVISOR CONTEXT section appended (absent for A),
-and one AIDE journal + submission.csv landed in the run's output dir.
+**Confirmed on box (2026-07-24):** the B/C spec mount works end-to-end. On a
+`random-acts-of-pizza` `/dev` run, `run.py` logged `cat /home/spec/spec.md`
+right after the `ADVISOR CONTEXT` banner (absent for A), the C2 structured
+content (flags/recommendations) appeared in AIDE's prompt, and a valid
+`submission.csv` + journal landed in the run's output dir.
 
 ## 6. Record and grade (box)
 
