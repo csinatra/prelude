@@ -132,7 +132,7 @@ Three networked containers in cloud evaluation:
 ```
 
 - **Local dev** — M4 MacBook Air 32GB. Pipeline development only, no training runs.
-- **Cloud eval** — Lambda Cloud A10 (24GB), ~$0.75/hr.
+- **Cloud eval** — Lambda Cloud A10 (24GB), ~$1.29/hr.
 - **Analysis** — local (M4 MacBook Air); results pulled from the cloud box.
 
 ## Setup
