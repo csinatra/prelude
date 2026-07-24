@@ -99,6 +99,8 @@ before eval runs.
 - **MLE-bench** (OpenAI, ICLR 2025) — evaluation infrastructure. <https://github.com/openai/mle-bench>
 - **AssistedDS** (EMNLP 2025) — baseline condition; finding: LLMs uncritically adopt unstructured knowledge.
 - **CatDB** (VLDB 2025) — closest existing analog; assumes populated data catalog, doesn't address unknown signals.
+- **DS-Agent** (Guo et al., ICML 2024) — closest prior art; CBR over retrieved Kaggle solutions, iteratively revised against execution feedback (Prelude builds its spec once, upfront).
+- **MLE-Dojo** (Qiang et al., 2025) — Gym-style benchmark/training environment over 200+ Kaggle competitions; scope contrast, not competing (doesn't study the agent's starting specification).
 - **Yang et al. 2023**, "LLMs as Optimizers" — conceptual foundation.
 
 ## Stack
@@ -130,8 +132,8 @@ Three networked containers in cloud evaluation:
 ```
 
 - **Local dev** — M4 MacBook Air 32GB. Pipeline development only, no training runs.
-- **Cloud eval** — AWS g5.xlarge (A10G), ~$1.50/hr.
-- **Analysis** — Colab free tier.
+- **Cloud eval** — Lambda Cloud A10 (24GB), ~$0.75/hr.
+- **Analysis** — local (M4 MacBook Air); results pulled from the cloud box.
 
 ## Setup
 
