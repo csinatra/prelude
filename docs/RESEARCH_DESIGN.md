@@ -24,6 +24,16 @@ mediated by specification flags being acted on — flag categories with higher
 action rates (per the frozen judge rubric) contribute disproportionately to
 outcome differences.
 
+*Corroborating prior evidence (suggestive, not validating):* DS-Agent's
+development-stage ablation found retrieval-augmented CBR beat its
+no-retrieval variant, and iterative case revision beat one-shot CBR — best
+rank 2.08 (CBR with feedback revision) vs 2.58 (CBR without) vs 3.41 (no
+retrieval), across 12 tasks, their Table 2. This is consistent with H1's
+basic premise that retrieved practitioner knowledge helps. It is only
+suggestive, not validation: DS-Agent works by a different mechanism
+(iterative case revision against execution feedback, vs Prelude's one-shot
+upfront spec) and on a much smaller, easier task set than MLE-bench Lite.
+
 ## Related work positioning
 
 - **MLE-bench** (OpenAI, ICLR 2025): evaluation infrastructure and the
@@ -35,6 +45,19 @@ outcome differences.
 - **CatDB** (VLDB 2025): closest analog — catalog-grounded data-science
   automation. Assumes a populated catalog; does not address reasoning about
   unknown/missing signals, and provides no staged specification process.
+- **DS-Agent** (Guo et al., ICML 2024): case-based reasoning framework that
+  retrieves whole solved Kaggle cases and iteratively revises them against
+  execution feedback. Closer prior art than AssistedDS/CatDB — directly
+  retrieves practitioner Kaggle solutions, similar to Prelude's corpus. Key
+  difference: DS-Agent's retrieval is revised iteratively against execution
+  feedback in a CBR loop; Prelude's spec is built once, upfront, before the
+  agent's own search begins.
+- **MLE-Dojo** (Qiang et al., May 2025): interactive Gym-style benchmark
+  environment built on 200+ Kaggle competitions, supporting SFT/RL agent
+  training. Different axis from Prelude — an alternative/broader execution
+  environment and training framework, not a study of what specification or
+  knowledge an agent starts with. Cite for scope contrast, not as directly
+  competing work.
 - **Yang et al. 2023, "LLMs as Optimizers":** conceptual grounding for
   prompt-level structured reasoning; not applied to ML problem
   specification.
@@ -296,7 +319,13 @@ contribution, and retrieval-grounded fraction (non-empty
   top-k rank ordering supplies quality control. Revisit triggers: evidence
   of junk retrievals in run inspection (then: tail-relevance judging, and
   per-kind quantile floors derived by a uniform documented rule), or corpus
-  expansion (re-run the sweep — thresholds are corpus-relative).
+  expansion (re-run the sweep — thresholds are corpus-relative). External
+  corroboration for bounding quantity: DS-Agent's own hyperparameter sweep
+  found retrieval performance *declines* past a single retrieved case (their
+  Figure 6b) — independent evidence that naive volume increases can actively
+  hurt, not merely fail to help. This supports, but is not the sole
+  justification for, the existing fixed-k design (the parity and
+  query-impoverishment arguments above stand on their own).
 - **Judge circularity:** rubric frozen pre-run; judge blinded to outcomes;
   evidence quotes required.
 - **Corpus coverage asymmetry:** 18/22 Lite competitions have practitioner
