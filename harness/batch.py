@@ -35,9 +35,12 @@ on the dev machine and shipped in.
 
 The box-specific invocations — the mle-bench run_agent + grade commands and
 the AIDE journal schema — are isolated in the functions marked [confirm on
-box] and verified on the first smoke run. The orchestration (queue selection,
-sequencing, failure isolation, registry advancement, terminate gating) is
-covered by tests with those seams mocked.
+box]. The 2026-07-24 smoke confirmed the output layout and run_agent
+invocation these target; the batch's own grade (via JSONL) and journal-metric
+parsing are first exercised on the initial automated drain, and should be
+re-verified if the pinned mle-bench commit changes. The orchestration (queue
+selection, sequencing, failure isolation, registry advancement, terminate
+gating) is covered by tests with those seams mocked.
 """
 
 import argparse
@@ -107,8 +110,9 @@ def _run_agent(*, run: dict, data_dir: Path) -> AgentOutputs:
     setup_cloudbox.sh patches mle-bench's agents/run.py with a hook that mounts
     the file named by the PRELUDE_SPEC_PATH env var read-only at /home/spec/spec.md
     (which aide-prelude/start.sh appends as ADVISOR CONTEXT). Condition A leaves
-    the var unset -> stock aide. [confirm on box]: the B/C spec mount is wired but
-    not yet exercised end-to-end (needs a first B/C run with credits).
+    the var unset -> stock aide. The B/C spec mount was confirmed end-to-end on
+    the 2026-07-24 smoke run (ADVISOR CONTEXT appended, valid submission — see
+    docs/DECISIONS.md).
     """
     run_output_dir = MLEBENCH_DIR / "runs" / f"batch_{run['run_key']}"
     comp_set = MLEBENCH_DIR / "experiments" / "splits" / f"{run['run_key']}.txt"

@@ -205,10 +205,10 @@ standalone mount; VS Code Remote-SSH needs a live box). Two patterns:
   later just needs the same filesystem re-attached — the registry state is
   intact.
 
-**[confirm on box]:** the `_run_agent` / `_locate_outputs` /
-`_read_journal_metrics` / `_grade` seams in `harness/batch.py` carry the
-guessed mle-bench commands and output layout — verify and fix them during the
-smoke run before relying on the automated path.
+**[confirm on box]:** the 2026-07-24 smoke confirmed the output layout these
+seams target (via a manual `run_agent` + `grade-sample`), but `harness.batch`'s
+own `_grade` (JSONL form) and `_read_journal_metrics` were not exercised —
+verify on the first automated batch run before relying on the drained path.
 
 ## 7. Merge back and analyze (dev machine)
 

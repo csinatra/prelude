@@ -3,9 +3,10 @@
 Structured problem specification before agentic execution begins. Research
 POC for an Anthropic Fellows Program application.
 
-> **Status (2026-07-14):** pipeline architecture and experimental design
+> **Status (2026-07-26):** pipeline architecture and experimental design
 > complete (B1 / B2 / C1 / C2, two-level retrieval, mechanistic-analysis
-> scaffold). **Evaluation runs not yet executed.**
+> scaffold). AIDE injection path confirmed end-to-end via smoke run.
+> **Evaluation runs not yet executed.**
 
 ## Research question
 
@@ -53,7 +54,7 @@ Full four-way contrast (B1→B2→C1→C2) in
 
 ## Pipeline — four stages with explicit intermediate outputs
 
-1. **Understand** — actual goal, constraints, causal vs predictive framing, resource constraints
+1. **Understand** — actual goal, causal vs predictive framing, and constraints (data, compute, time, submission format)
 2. **Surface** — available data signals, desired signals, relevant prior work
 3. **Flag** — assumption violations: IID, exposure bias, outcome measurement gaps, attribution ambiguity, sequential dependencies, resource constraints
 4. **Advise** — modeling approaches, tradeoffs, known failure modes
