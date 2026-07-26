@@ -28,6 +28,29 @@ structured-critical) design — full rationale in
 | C1 | staged, 4 directed queries | freeform, stance-free (pilot condition) | `pipeline/condition_c1.py` |
 | C2 | staged, 4 directed queries | structured schemas + critical stance | `pipeline/condition_c2.py` |
 
+Concretely, on `random-acts-of-pizza` (Haiku dev model — illustrative, not an
+eval result): **B2** and **C1** inject freeform advice prose the agent may adopt
+uncritically —
+
+```
+## Advisor notes / ### Feature Engineering Strategy
+Linguistic features (high ROI): word/character counts, punctuation patterns ...
+```
+
+— while **C2** injects typed, confidence-rated assumption flags, each linked to
+a mitigation:
+
+```
+[F0] outcome_measurement_gap  (confidence: high)
+  The ground-truth label (successful pizza receipt) is not observable in the
+  available signals ...
+→ recommendation (addresses F0): calibration-focused model, post-hoc
+  Platt/isotonic scaling.
+```
+
+Full four-way contrast (B1→B2→C1→C2) in
+[docs/RESEARCH_DESIGN.md § Illustrative output](docs/RESEARCH_DESIGN.md#illustrative-output).
+
 ## Pipeline — four stages with explicit intermediate outputs
 
 1. **Understand** — actual goal, constraints, causal vs predictive framing, resource constraints

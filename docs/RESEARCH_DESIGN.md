@@ -133,6 +133,120 @@ flowchart TD
     A["Condition A (contingent):<br/>no spec mounted = stock AIDE"]
 ```
 
+### Staged pipeline — queries, prompts, schemas
+
+C decomposes spec-building into four stages. **parse** extracts the problem's ML
+structure (`task_type`, `evaluation_metric`, `goal`) from the raw description —
+this runs in **both** C1 and C2, since the directed queries must be built from
+something. **surface**, **flag**, and **advise** then each retrieve with a query
+built from those extracted fields (Table 1). C1 and C2 run this identical staged
+retrieval; they differ only in synthesis (Table 2): **C2** keeps every stage's
+output as a typed schema, while **C1** keeps none of it — it pools the four
+retrieved blocks into one freeform pass (B2's style: no schema, no stance), over
+staged rather than flat retrieval. B retrieves everything with one flat
+`raw_problem` query and, in B2, one freeform pass.
+
+**Table 1 — staged retrieval** (run identically by C1 and C2). Query text is the
+verbatim string embedded for similarity search — `flag` and `advise` prepend a
+fixed phrase to the `{task_type} {evaluation_metric} {goal}` fields `parse`
+extracted; `parse` queries with the raw description. Sample hit is the top
+retrieval for `random-acts-of-pizza` (other competitions only, leave-one-out;
+cosine similarity in parens) — the directed queries pull different, on-target code.
+
+| Stage | Query text | Query target | Sample hit |
+|---|---|---|---|
+| **parse** | the raw competition description | descriptions of similar past competitions | `ml1819-whats-cooking?` (0.65) — a competition description |
+| **surface** | `{task_type} {evaluation_metric} {goal}` | data signals and prior work practitioners used | `jigsaw-toxic-comment` (0.55) — `roc_curve` / `roc_auc_score` evaluation code |
+| **flag** | `validation leakage overfitting pitfalls {task_type} {evaluation_metric} {goal}` | validation / leakage / overfitting patterns | `siim-isic-melanoma` (0.58) — leaderboard-probing (`known positive set to 1, rest 0`) |
+| **advise** | `model architecture training approach {task_type} {evaluation_metric} {goal}` | modeling approaches for the metric | `jigsaw-toxic-comment` (0.64) — a Keras text-model pipeline |
+
+**Table 2 — C2 structured synthesis** (C2 only). Each stage is a
+schema-constrained LLM call whose output is preserved in the spec (sample output
+from the random-acts run). B2 and C1 produce **none** of this per-stage
+structure — they collapse the retrieval into a single freeform prose pass (the
+format contrast is visible under Illustrative output); C1 uses `parse`'s
+extraction only to build the Table 1 queries.
+
+| Stage | Prompt produces | Schema | Sample output |
+|---|---|---|---|
+| **parse** | goal, task type, evaluation metric, target variable, framing (causal / predictive / descriptive / ambiguous), constraints | `ParsedProblem` | task = binary classification; metric = ROC-AUC; target = `requester_received_pizza`; framing = predictive |
+| **surface** | available signals; signals that would help but are missing; relevant prior work | `SurfacedSignals` | available: `request_text_content`, `request_text_length`; missing: `user_previous_success_rate` |
+| **flag** | assumption violations, each a typed `category` + `confidence` + `evidence_doc_ids` | `AssumptionFlags` (list of `SpecificationFlag`) | `[F0] outcome_measurement_gap` (high) — success label not observable in the available signals |
+| **advise** | concrete approaches, each a `tradeoff` + `failure_mode` + `addresses_flags` | `Advice` (list of `Recommendation`) | calibration-focused Bi-GRU/XGBoost + post-hoc calibration — addresses F0 |
+
+Two prompt details worth making explicit:
+
+- **Shared critical stance, C2 only.** Every C2 stage prompt appends
+  `RETRIEVAL_STANCE`: retrieved excerpts are *"evidence of past practice, not a
+  boundary on your reasoning … explicitly disregard excerpts that are
+  irrelevant, outdated, or low quality."* B2 and C1 synthesis is deliberately
+  stance-free — uncritical adoption is the AssistedDS failure mode those
+  conditions must be free to exhibit (CLAUDE.md constraint 6).
+- **Honest grounding, not forced citation.** The flag prompt instructs: *"cite a
+  document only if it genuinely shaped the flag; a flag drawn from your general
+  knowledge should honestly report an empty `evidence_doc_ids` list — that is a
+  valid and expected answer, not a failure."* So an empty `evidence_doc_ids` is
+  a truthful "this came from model priors," not a defect — read the
+  retrieval-grounded fraction with that in mind.
+
+### Illustrative output
+
+The four injected artifacts on one competition, showing the additive design —
+each step changes exactly one variable. *Built with the Haiku **dev** model on
+`random-acts-of-pizza` (the off-eval smoke competition); illustrative only, not
+an eval result — eval runs use the pinned Sonnet `EVAL_MODEL`. Excerpts are
+truncated/reflowed for readability. Document budget (count of retrieved docs) is
+parity-matched across all four; what varies is how they are retrieved and what
+synthesis sits on top.*
+
+**B1** — the raw retrieved block, verbatim, nothing on top:
+
+```
+[code4ml_homework-for-students_0 | competition_description]
+'Feature Engineering  Build Models  Submission  Notebooks  csv  Kernel ...'
+  ... top-k practitioner chunks + competition descriptions, flat single query
+```
+
+**B2** ( = B1 + synthesis) — same flat block plus a stance-free advice pass.
+Prose the agent may adopt uncritically — the AssistedDS failure mode B exists to
+exhibit:
+
+```
+## Advisor notes
+### Feature Engineering Strategy
+Linguistic features (high ROI): word/character counts, punctuation patterns,
+capitalization stats, sentiment indicators, readability metrics ...
+```
+
+**C1** ( = B2 with staged retrieval) — same freeform advice format, but the
+block is now pulled by four *directed* queries instead of one flat query.
+Isolates the effect of retrieval structure:
+
+```
+## Advisor notes
+## 1. Problem Understanding
+This is a binary classification problem ... The key insight: this isn't purely
+NLP — you have rich metadata that correlates with altruistic behavior.
+```
+
+**C2** ( = C1 with structured synthesis) — staged retrieval, but the freeform
+prose is replaced by typed, confidence-rated assumption flags, each linked to a
+concrete recommendation. Isolates the effect of output structure:
+
+```
+[F0] outcome_measurement_gap   (confidence: high)
+  The ground-truth label (successful pizza receipt) is not observable in the
+  available signals — only request metadata and user history exist.
+
+→ recommendation (addresses F0): calibration-focused model — Bi-GRU/XGBoost,
+  then post-hoc Platt/isotonic scaling to output calibrated probabilities.
+```
+
+The B2→C1 step changes retrieval (flat → directed); the C1→C2 step changes
+synthesis (freeform prose → structured flags + linked mitigations). C2's flags
+are categorized and confidence-rated, and recommendations cite the `flag_id`s
+they address — the structure whose downstream effect this POC measures.
+
 Design notes:
 
 - **Condition A (decided 2026-07-16, pre-run):** the published MLE-bench
@@ -162,10 +276,10 @@ Design notes:
 - **Document budgets parity-matched** via `pipeline/config.py` (B's flat
   budget = staged conditions' total). Exact values are calibration
   parameters, not design constants.
-- **C1 runs parse's structured extraction** (task type, metric, goal) solely
-  to build the directed queries — its synthesis input is description +
-  context block only, identical in form to B2's. This is inherent to
-  "staged": directed queries must be directed by something.
+- **C1 holds synthesis at B2's level.** Its staged retrieval feeds a single
+  freeform, stance-free pass (no schema, no `RETRIEVAL_STANCE`), so the only
+  change from B2 is flat → staged retrieval — see the staged-pipeline tables
+  above.
 - **C1 is a pilot condition:** 3–4 competitions, single seed, not the full
   matrix. Built to run at full scale; the harness defaults to the pilot
   subset.
