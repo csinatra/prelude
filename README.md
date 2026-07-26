@@ -83,21 +83,21 @@ gitignored) embedded with Voyage `voyage-code-3`:
 Budgets are parity-matched knobs in `pipeline/config.py` (B's flat budget =
 staged conditions' total).
 
-Two collections:
+Three collections:
 
 | Collection | Contents | Queried by |
 |---|---|---|
-| `competition_metadata` | Code4ML `competitions.csv` descriptions (1,156 competitions) + mle-bench `description.md` for the Lite 22 | parse (C1/C2), B flat |
+| `competition_metadata` | Code4ML `competitions.csv` + mle-bench `description.md` (Lite-22) — 1,005 chunks across 947 competitions | parse (C1/C2), B flat |
 | `notebook_summaries` | one LLM abstract per unique notebook (level one of two-level retrieval) | all practitioner-knowledge access |
 | `practitioner_knowledge` | Code4ML code blocks — already cell-level chunks, tagged with competition slug, notebook id, and Kaggle score | level two, restricted to surfaced notebooks |
 
 **Leave-one-out:** every retrieval carries
 `{"competition_id": {"$ne": current_competition_id}}`, enforced inside
 `pipeline/retriever.py` — the pipeline can never see the evaluated
-competition's own artifacts. Code4ML covers 15 of the Lite 22; the other 7
+competition's own artifacts. Code4ML covers 18 of the Lite-22; the other 4
 have descriptions only (from mle-bench). Under leave-one-out this doesn't
 change eval validity — every competition retrieves only from *other*
-competitions — but the 15 covered ones are the test cases where the filter
+competitions — but the 18 covered ones are the test cases where the filter
 does real work.
 
 **Note on sources:** the implementation brief's Source 1 (MLEModernizer,
@@ -105,7 +105,7 @@ zenodo 15022707) ships as a single 107 GB tar.gz and is deferred to the cloud
 box. Code4ML's code-block CSVs (~1.4 GB) fill the practitioner-knowledge role
 for the dev corpus.
 
-Build the corpus (dev subset — Lite 22 code blocks only):
+Build the corpus (dev subset — Lite-22 code blocks only):
 
 ```bash
 python -m ingest.download           # Code4ML CSVs (~1.4 GB) + mle-bench descriptions
@@ -132,7 +132,7 @@ before eval runs.
 - LangGraph — pipeline orchestration
 - LangSmith — observability and evaluation
 - Anthropic API — Sonnet for evaluation runs, Haiku for development iteration
-- ChromaDB — local persistent vector store (two collections, cosine)
+- ChromaDB — local persistent vector store (three collections, cosine)
 - Voyage AI — `voyage-code-3` embeddings for ingestion and queries
 - Ollama — optional local backend for free, offline wiring smoke tests (never eval runs)
 - AIDE — MLE-bench execution layer
@@ -166,8 +166,8 @@ brew install uv
 uv venv --python 3.12
 source .venv/bin/activate
 uv pip install langgraph langsmith anthropic python-dotenv pytest requests chromadb voyageai pandas
-# create .env with ANTHROPIC_API_KEY, VOYAGE_API_KEY, LANGSMITH_API_KEY,
-# LANGSMITH_TRACING_V2=true, LANGSMITH_PROJECT=spec-pipeline-dev
+cp .env.example .env   # then fill in: ANTHROPIC_API_KEY, VOYAGE_API_KEY,
+                       # LANGSMITH_API_KEY, LANGSMITH_TRACING_V2, LANGSMITH_PROJECT
 ```
 
 For cloud-box provisioning and end-to-end experiment execution (spec
@@ -280,3 +280,9 @@ the leave-one-out filter, similarity threshold, and k against a temp
 ChromaDB with fake embeddings; `tests/test_chunking.py` covers oversized
 code-block splitting. `tests/test_api.py` is the one exception — it makes a
 real Anthropic API call to confirm connectivity.
+
+## License and acknowledgments
+
+MIT — see [LICENSE](LICENSE). This work builds on external tools and datasets
+(MLE-bench, AIDE / aideml, Code4ML, Voyage AI, and others), credited in
+[ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md).

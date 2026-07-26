@@ -51,3 +51,19 @@ CLAUDE.md.
   `SIMILARITY_THRESHOLD=None` for v1 — stage-directed queries score ~0.06
   lower than flat against the same chunks, so any global cutoff breaks
   knowledge parity; top-k rank ordering is the quality control.
+- ✅ Cloud-box provisioned and verified on a Lambda A10.
+  `scripts/setup_cloudbox.sh` encodes the full bring-up (Python 3.11, Sysbox
+  runtime, git-lfs, mle-bench at the pinned commit, base + agent image builds,
+  spec-mount patch). AIDE agent pinned to Haiku 4.5 on aideml v6.3.3 — pristine
+  except an `httpx<0.28` env pin and an Anthropic function-calling backend
+  patch, so the whole AIDE loop runs single-provider on Claude.
+- ✅ Smoke run GREEN end-to-end on `random-acts-of-pizza` (off-eval): Haiku
+  drove AIDE to valid graded submissions — A-style 0.608 and a C2-spec-mounted
+  0.637, both above median — exercising provision → spec inject → AIDE → grade.
+- ✅ B/C spec injection confirmed on the box: `PRELUDE_SPEC_PATH` mounts the
+  spec at `/home/spec/spec.md`, appended as ADVISOR CONTEXT, with the C2
+  structured content reaching AIDE's prompt. Batch driver (`harness/batch.py`)
+  drains the run queue (park-and-manual-resubmit on failure) and preserves
+  agent artifacts (submission, journal, best solution, per-call token log) onto
+  the persistent volume, so `--terminate-on-done` can't lose the
+  mechanistic-judge inputs.
