@@ -61,6 +61,15 @@ upfront spec) and on a much smaller, easier task set than MLE-bench Lite.
 - **Yang et al. 2023, "LLMs as Optimizers":** conceptual grounding for
   prompt-level structured reasoning; not applied to ML problem
   specification.
+- **Co-Scientist** (Gottweis, Natarajan, et al., *Nature*, 2026; Google
+  DeepMind): *independent convergence in an adjacent domain, not prior art.*
+  A multi-agent system that generates and refines scientific hypotheses for
+  researchers to test, validated in wet-lab collaborations. It reflects the
+  same core conviction as Prelude, reached independently: that problem
+  understanding and hypothesis formation deserve a structured phase before the
+  solution phase. A shared premise, not a shared architecture — cited as a
+  signal the premise is an active frontier question, not as transferable
+  technique.
 
 ## System overview
 
@@ -256,7 +265,7 @@ Design notes:
   `aide-prelude` with no spec mounted is byte-identical to stock AIDE
   (same agent model, hardware, time/step budgets, mle-bench version).
   It is pre-registered as a **contingent arm**, not a primary condition:
-  the full A arm (~30 runs, est. +$200–250) — unmounted `aide-prelude` on
+  the full A arm (~30 runs, est. +\$200–250) — unmounted `aide-prelude` on
   the eval competitions at the same model/hardware/budget as B/C — triggers
   only if C2 fails to separate from B, or any condition lands below the
   plausible no-assistance range, the outcomes under which "is retrieval
