@@ -1,12 +1,20 @@
 # Prelude
 
-Structured problem specification before agentic execution begins. Research
-POC for an Anthropic Fellows Program application.
+Structured problem specification before agentic execution begins — a research
+POC on LLM-assisted problem framing for ML engineering.
 
 > **Status (2026-07-26):** pipeline architecture and experimental design
 > complete (B1 / B2 / C1 / C2, two-level retrieval, mechanistic-analysis
 > scaffold). AIDE injection path confirmed end-to-end via smoke run.
 > **Evaluation runs not yet executed.**
+
+## Motivation
+
+Before an agent writes a line of code, a human expert does the part that's hardest to automate: they frame the problem. As agentic systems take on more of the work between a stated goal and a finished result, more of what determines success sits upstream of execution. Translating an ambiguous goal into something verifiable is a critical first step to building any solution, starting with the basic question of what the core problem actually is and what would count as a good answer.
+
+Problem framing draws on things that don't show up cleanly in a task description: institutional precedent, awareness of failure modes and implicit assumptions, judgment about what a metric actually needs to capture, and constraints that live outside the immediate problem statement. People with domain expertise supply this instinctively. Often that means rounds of conversation with collaborators and senior colleagues, testing an idea against people who have seen adjacent problems, before ever committing to a direction. An agentic system has significant knowledge baked into its parameters, but applying that knowledge to a specific problem still takes direction: something has to point it at the right context, the right failure modes, the right constraints. Left on its own, it may land on an idea that's sound in principle but doesn't fit the actual constraints of the problem: the deployment environment, the data limitations, the infrastructure already in place. That's the gap between a research implementation and one that survives production.
+
+That gap, between stating a goal and understanding a problem well enough to act on it, is the space this project explores. The underlying capabilities apply more broadly to any LLM-based system working through a complex task: decomposing an ambiguous problem into its core elements, understanding what knowledge is actually needed against what's available, and reasoning critically across all of that to arrive at a solution. This project starts with a narrower focus, testing whether structure helps in one measurable domain, on the premise that in the context of ML engineering, the gap is concrete and easier to see.
 
 ## Research question
 
@@ -50,7 +58,7 @@ a mitigation:
 ```
 
 Full four-way contrast (B1→B2→C1→C2) in
-[docs/RESEARCH_DESIGN.md § Illustrative output](docs/RESEARCH_DESIGN.md#illustrative-output).
+[RESEARCH_DESIGN.md, Illustrative output](docs/RESEARCH_DESIGN.md#illustrative-output).
 
 ## Pipeline — four stages with explicit intermediate outputs
 
@@ -118,7 +126,7 @@ The similarity threshold (`SIMILARITY_THRESHOLD` env var) is deliberately
 unset — to be calibrated against the real corpus on 5–10 dev competitions
 before eval runs.
 
-## Prior art
+## Related work
 
 - **MLE-bench** (OpenAI, ICLR 2025) — evaluation infrastructure. <https://github.com/openai/mle-bench>
 - **AssistedDS** (EMNLP 2025) — baseline condition; finding: LLMs uncritically adopt unstructured knowledge.
@@ -126,6 +134,8 @@ before eval runs.
 - **DS-Agent** (Guo et al., ICML 2024) — closest prior art; CBR over retrieved Kaggle solutions, iteratively revised against execution feedback (Prelude builds its spec once, upfront).
 - **MLE-Dojo** (Qiang et al., 2025) — Gym-style benchmark/training environment over 200+ Kaggle competitions; scope contrast, not competing (doesn't study the agent's starting specification).
 - **Yang et al. 2023**, "LLMs as Optimizers" — conceptual foundation.
+
+- **Co-Scientist** (Gottweis et al., *Nature*, 2026; Google DeepMind) — *independent convergence, adjacent domain (not prior art).* A multi-agent system for scientific hypothesis generation, validated in wet-lab work, that independently reflects Prelude's core premise: problem understanding and hypothesis formation deserve a structured phase before the solution phase. A shared premise, not a shared architecture.
 
 ## Stack
 
@@ -156,7 +166,7 @@ Three networked containers in cloud evaluation:
 ```
 
 - **Local dev** — M4 MacBook Air 32GB. Pipeline development only, no training runs.
-- **Cloud eval** — Lambda Cloud A10 (24GB), ~$1.29/hr.
+- **Cloud eval** — Lambda Cloud A10 (24GB), ~\$1.29/hr.
 - **Analysis** — local (M4 MacBook Air); results pulled from the cloud box.
 
 ## Setup
