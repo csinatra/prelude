@@ -32,14 +32,28 @@ from pipeline.llm_client import call_llm_text
 # filter.
 SUMMARY_MODEL = "claude-haiku-4-5-20251001"
 
-MAX_NOTEBOOK_CHARS = 12_000  # abstract input cap; blocks concatenated in order
+# Abstract input cap; blocks concatenated in order. Raised from 12k (which fully
+# covered only ~79% of notebooks) so the summarizer sees the whole notebook —
+# modeling/validation cells cluster at the END, so a tight front-biased cap
+# starved the abstract of its most transferable content. 60k covers ~99% of
+# Code4ML whole while still capping the pathological multi-hundred-KB outliers;
+# the input-cost delta over 40k is ~$4 across the full corpus (the richer prompt
+# below, not the cap, drives the Batch re-cost).
+MAX_NOTEBOOK_CHARS = 60_000
 LLM_WORKERS = 8
 UPSERT_BATCH = 200
 
 SUMMARY_SYSTEM = (
-    "You summarize Kaggle notebooks for a retrieval index. Given the code cells of one "
-    "notebook, write a 3-5 sentence abstract of its approach: models used, feature "
-    "engineering, validation strategy, and anything distinctive. Plain prose, no headers."
+    "You are summarizing a solution notebook for one ML problem so that an engineer facing a "
+    "DIFFERENT but related problem can learn from it. Write a detailed technical abstract of the "
+    "notebook's approach, emphasizing what transfers across problems of this class over details "
+    "specific to this one dataset. Cover, where present: the modeling approach (specific "
+    "estimators or architectures, and notable hyperparameter or configuration choices); feature "
+    "engineering and data transformations (name the concrete derived features or representations, "
+    "not just 'feature engineering'); the validation strategy (resampling scheme and the metric "
+    "it targets); preprocessing and data handling; and any distinctive, non-obvious, or "
+    "failure-mode-avoiding techniques. Prefer specifics an engineer could reuse over "
+    "generalities. Plain prose, no headers, no competition or leaderboard framing."
 )
 
 
@@ -71,7 +85,7 @@ def _summarize(*, kaggle_id: int, entry: dict) -> tuple[int, str]:
     abstract = call_llm_text(
         system=SUMMARY_SYSTEM,
         user=f"Notebook code cells:\n{text}",
-        max_tokens=512,
+        max_tokens=1024,
         model=SUMMARY_MODEL,
     )
     return kaggle_id, abstract

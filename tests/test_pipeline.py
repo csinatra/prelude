@@ -50,7 +50,7 @@ FAKE_RECOMMENDATION = {
 }
 
 FAKE_PAYLOADS = {
-    "translates machine learning competition": {
+    "translates machine learning problem": {
         "goal": (
             "estimate, per customer, the causal effect of each candidate "
             "intervention (no intervention, small discount, medium discount, "
@@ -151,7 +151,7 @@ def test_parse_problem_updates_state():
 def test_surface_signals_updates_state():
     state = {
         "raw_problem": "which customers should get a discount to prevent churn?",
-        "parsed_goal": FAKE_PAYLOADS["translates machine learning competition"]["goal"],
+        "parsed_goal": FAKE_PAYLOADS["translates machine learning problem"]["goal"],
         "framing_type": "causal",
         "stage_trace": ["parse_problem"],
     }
@@ -164,7 +164,7 @@ def test_surface_signals_updates_state():
 def test_flag_assumptions_returns_structured_flags():
     state = {
         "raw_problem": "which customers should get a discount to prevent churn?",
-        "parsed_goal": FAKE_PAYLOADS["translates machine learning competition"]["goal"],
+        "parsed_goal": FAKE_PAYLOADS["translates machine learning problem"]["goal"],
         "framing_type": "causal",
         "available_signals": FAKE_PAYLOADS["ML data scientist"]["available_signals"],
         "desired_signals": FAKE_PAYLOADS["ML data scientist"]["desired_signals"],
@@ -180,9 +180,9 @@ def test_flag_assumptions_returns_structured_flags():
 def test_advise_approach_returns_linked_recommendations():
     state = {
         "raw_problem": "which customers should get a discount to prevent churn?",
-        "parsed_goal": FAKE_PAYLOADS["translates machine learning competition"]["goal"],
+        "parsed_goal": FAKE_PAYLOADS["translates machine learning problem"]["goal"],
         "framing_type": "causal",
-        "constraints": FAKE_PAYLOADS["translates machine learning competition"]["constraints"],
+        "constraints": FAKE_PAYLOADS["translates machine learning problem"]["constraints"],
         "available_signals": FAKE_PAYLOADS["ML data scientist"]["available_signals"],
         "desired_signals": FAKE_PAYLOADS["ML data scientist"]["desired_signals"],
         "prior_work": FAKE_PAYLOADS["ML data scientist"]["prior_work"],

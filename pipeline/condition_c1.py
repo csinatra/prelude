@@ -67,8 +67,8 @@ def run_c1(*, raw_problem: str, competition_id: str) -> dict:
     advice = call_llm_text(
         system=FREEFORM_SYSTEM,
         user=(
-            f"Competition description:\n{raw_problem}\n\n"
-            f"Reference material from similar competitions:\n{context_block}"
+            f"Problem description:\n{raw_problem}\n\n"
+            f"Reference material from similar problems:\n{context_block}"
         ),
         max_tokens=4096,
     )
