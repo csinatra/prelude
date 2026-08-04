@@ -77,7 +77,7 @@ execution.
 
 All corpus access goes through two seams in `pipeline/retriever.py`, both
 enforcing leave-one-out, over a local ChromaDB store (`data/chroma/`,
-gitignored) embedded with Voyage `voyage-code-3`:
+gitignored) embedded with Voyage `voyage-4-large`:
 
 - `retrieve()` — flat top-k retrieval. Used for `competition_metadata` (parse
   stage) and, over `notebook_summaries`, for Condition B's single flat pass.
@@ -119,9 +119,12 @@ Build the corpus (dev subset — Lite-22 code blocks only):
 ```bash
 python -m ingest.download           # Code4ML CSVs (~1.4 GB) + mle-bench descriptions
 python -m ingest.ingest_metadata    # → competition_metadata collection
-python -m ingest.ingest_notebooks   # → practitioner_knowledge collection
 python -m ingest.ingest_summaries   # → notebook_summaries (one LLM abstract per notebook; resumable)
 ```
+
+Pass `--rebuild` to `ingest_metadata` / `ingest_summaries` to drop and rebuild a
+collection from scratch — required after an embedding-model or summary-prompt
+change (skip-existing resumability would otherwise leave stale records in place).
 
 The similarity threshold (`SIMILARITY_THRESHOLD` env var) is deliberately
 unset — to be calibrated against the real corpus on 5–10 dev competitions
@@ -143,8 +146,8 @@ before eval runs.
 - LangGraph — pipeline orchestration
 - LangSmith — observability and evaluation
 - Anthropic API — Sonnet for evaluation runs, Haiku for development iteration
-- ChromaDB — local persistent vector store (three collections, cosine)
-- Voyage AI — `voyage-code-3` embeddings for ingestion and queries
+- ChromaDB — local persistent vector store (two queried collections, cosine)
+- Voyage AI — `voyage-4-large` embeddings for ingestion and queries
 - Ollama — optional local backend for free, offline wiring smoke tests (never eval runs)
 - AIDE — MLE-bench execution layer
 - Python 3.12 via `uv`
@@ -264,7 +267,7 @@ pipeline/
 ├── condition_b.py          # run_b1()/run_b2() — flat retrieval conditions
 ├── llm_client.py           # call_llm() schema-constrained + call_llm_text() freeform
 ├── retriever.py             # retrieve() + retrieve_with_topup() — leave-one-out enforced here
-├── embeddings.py             # embed() — voyage-code-3, single embedding seam
+├── embeddings.py             # embed() — voyage-4-large, single embedding seam
 └── toy.py                     # two-stage smoke pipeline, Anthropic-only
 
 ingest/      # offline corpus build: download, chunking, three ingestion scripts

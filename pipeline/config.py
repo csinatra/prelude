@@ -24,10 +24,11 @@ EVAL_MODEL = "claude-sonnet-5"
 
 # ── Collections ─────────────────────────────────────────────────────
 COMPETITION_METADATA = "competition_metadata"
-# Ingested and retained, but NOT queried at spec time: the retrieval unit is the
-# notebook summary (2026-08-03 probe — code chunks added little transferable
-# signal over a rich summary at multiples of the token cost). Kept for a possible
-# future curated-cell grounding path.
+# Collection DROPPED at the voyage-4-large re-ingest (2026-08-03): unqueried since
+# the retrieval unit became the notebook summary, and its voyage-code-3 vectors are
+# an incompatible-space liability. Constant + ingest_notebooks module kept as a
+# dormant rebuild path if curated-cell grounding is ever revived (re-embed from
+# scratch). Not referenced by any spec-time code.
 PRACTITIONER_KNOWLEDGE = "practitioner_knowledge"
 NOTEBOOK_SUMMARIES = "notebook_summaries"
 

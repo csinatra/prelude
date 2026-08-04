@@ -8,9 +8,12 @@ summary_model}.
 Resumable: kaggle_ids already in the collection are skipped, so the run can
 be interrupted and restarted.
 
-Usage: python -m ingest.ingest_summaries [--limit N]   (run ingest.download first)
+Usage: python -m ingest.ingest_summaries [--limit N] [--rebuild]  (run ingest.download first)
 --limit caps how many pending notebooks this invocation summarizes — for
 staged spends; resumability makes successive capped runs additive.
+--rebuild drops the collection first — REQUIRED to regenerate after a summary-
+prompt or embedding-model change, since skip-existing would otherwise leave the
+old summaries untouched.
 """
 
 import argparse
@@ -21,7 +24,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 
 from ingest.config import LITE_COMPETITIONS, NOTEBOOK_SUMMARIES, RAW_DIR
-from ingest.store import add_documents, get_collection
+from ingest.store import add_documents, drop_collection, get_collection
 from pipeline.llm_client import call_llm_text
 
 # Pinned deliberately, NOT the MODEL env var: summaries are corpus
@@ -91,13 +94,16 @@ def _summarize(*, kaggle_id: int, entry: dict) -> tuple[int, str]:
     return kaggle_id, abstract
 
 
-def main(*, limit: int | None = None) -> None:
+def main(*, limit: int | None = None, rebuild: bool = False) -> None:
     # Bulk corpus infrastructure: thousands of LLM calls per run. Tracing each
     # one burns the LangSmith monthly trace quota (it did, 2026-07-15) and adds
     # nothing — the resumable collection + summary_model metadata are the audit
     # trail here. Experiment-time pipeline calls stay traced.
     os.environ["LANGSMITH_TRACING"] = "false"
     os.environ["LANGSMITH_TRACING_V2"] = "false"
+    if rebuild:
+        drop_collection(name=NOTEBOOK_SUMMARIES)
+        print(f"dropped {NOTEBOOK_SUMMARIES} for rebuild")
     collection = get_collection(name=NOTEBOOK_SUMMARIES)
     notebooks = _load_notebooks()
     print(f"unique notebooks in slice: {len(notebooks)}")
@@ -149,4 +155,8 @@ def main(*, limit: int | None = None) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=None)
-    main(limit=parser.parse_args().limit)
+    parser.add_argument(
+        "--rebuild", action="store_true", help="drop the collection first (prompt/model change)"
+    )
+    args = parser.parse_args()
+    main(limit=args.limit, rebuild=args.rebuild)

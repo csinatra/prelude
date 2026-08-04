@@ -184,7 +184,7 @@ pipeline/
 ├── llm_client.py           # call_llm() schema-constrained + call_llm_text() freeform
 ├── retriever.py             # retrieve() flat top-k + retrieve_with_topup() staged
 │                             #   (cross-stage distinct-doc top-up); leave-one-out in BOTH
-├── embeddings.py             # embed() — voyage-code-3 for documents and queries, batched
+├── embeddings.py             # embed() — voyage-4-large for documents and queries, batched
 ├── condition_b.py             # Condition B: run_b1() raw block, run_b2() freeform pass
 ├── condition_c1.py             # Condition C1: staged retrieval + B2 freeform synthesis
 ├── condition_c2.py              # run_c2() — Condition C2 entry point over the graph

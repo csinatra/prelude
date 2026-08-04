@@ -5,7 +5,7 @@ Oversized blocks are split at blank-line boundaries (logical units in notebook
 code) so no chunk exceeds the cap, with a hard character split as fallback.
 
 The cap is in characters (~4 chars/token): 4096 chars ≈ 1024 tokens, the
-chunk size agreed for retrieval precision — well under voyage-code-3's limit.
+chunk size agreed for retrieval precision — well under voyage-4-large's 32K-token limit.
 """
 
 MAX_CHUNK_CHARS = 4096
