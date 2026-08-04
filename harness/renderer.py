@@ -16,7 +16,7 @@ context; it is preserved verbatim as spec.md in the run artifact.
 from pipeline.nodes import _format_docs
 from pipeline.retriever import RetrievedDoc
 
-CONTEXT_HEADER = "## Reference material from similar competitions"
+CONTEXT_HEADER = "## Reference material from similar problems"
 ADVICE_HEADER = "## Advisor notes"
 SPEC_HEADER = "## Problem specification"
 

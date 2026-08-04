@@ -1,7 +1,7 @@
 """Condition B baselines — unstructured knowledge provision (AssistedDS-style).
 
 Two variants sharing one flat retrieval pass (single query = the raw
-competition description; no stage-directed queries):
+problem description; no stage-directed queries):
 
 - B1 (`run_b1`): retrieved material formatted into a context block and
   injected into AIDE as-is. No LLM pass.
@@ -36,8 +36,8 @@ from pipeline.retriever import RetrievedDoc, retrieve, retrieve_two_level
 # AssistedDS failure mode these conditions must be free to exhibit).
 FREEFORM_SYSTEM = (
     "You are an experienced ML engineer advising a colleague on a machine learning "
-    "competition. You are given the competition description and reference material from "
-    "similar past competitions. Provide advice on how to approach the competition."
+    "problem. You are given the problem description and reference material from "
+    "similar past problems. Provide advice on how to approach the problem."
 )
 
 
@@ -75,8 +75,8 @@ def run_b2(*, raw_problem: str, competition_id: str) -> dict:
     advice = call_llm_text(
         system=FREEFORM_SYSTEM,
         user=(
-            f"Competition description:\n{raw_problem}\n\n"
-            f"Reference material from similar competitions:\n{context_block}"
+            f"Problem description:\n{raw_problem}\n\n"
+            f"Reference material from similar problems:\n{context_block}"
         ),
         max_tokens=4096,
     )

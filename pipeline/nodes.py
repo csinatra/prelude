@@ -15,7 +15,7 @@ from pipeline.state import PipelineState
 # showed LLMs adopt provided knowledge uncritically) — retrieval must inform
 # reasoning, never bound it.
 RETRIEVAL_STANCE = (
-    " Retrieved excerpts from prior competitions are evidence of past practice, not a boundary "
+    "Retrieved excerpts from prior problems are evidence of past practice, not a boundary "
     "on your reasoning: reason from your full ML expertise first, use the excerpts to ground or "
     "recalibrate specific claims, and explicitly disregard excerpts that are irrelevant, "
     "outdated, or low quality."
@@ -70,16 +70,16 @@ def parse_problem(state: PipelineState) -> dict:
     )
     parsed = call_llm(
         system=(
-            "You are a senior ML engineer who translates machine learning competition "
+            "You are a senior ML engineer who translates machine learning problem "
             "descriptions into rigorous ML framing. Extract the underlying ML structure from the "
-            "supplied competition description: its goal, task type, evaluation metric, target "
+            "supplied problem description: its goal, task type, evaluation metric, target "
             "variable, whether the question is causal, predictive, descriptive, or ambiguous, and "
             "its key constraints (data size, compute, time limits, submission format)."
             + RETRIEVAL_STANCE
         ),
         user=(
-            f"Competition description:\n{state['raw_problem']}\n\n"
-            f"Descriptions of similar past competitions:\n{_format_docs(docs)}"
+            f"Problem description:\n{state['raw_problem']}\n\n"
+            f"Descriptions of similar past problems:\n{_format_docs(docs)}"
         ),
         response_model=ParsedProblem,
     )
@@ -114,13 +114,13 @@ def surface_signals(state: PipelineState) -> dict:
             "context, signals that would materially help but are likely missing, and directly "
             "relevant prior work (approaches, features, external data, preprocessing) — drawing "
             "on both your own knowledge of this problem class and what the retrieved excerpts "
-            "from similar competitions actually used." + RETRIEVAL_STANCE
+            "from similar problems actually used." + RETRIEVAL_STANCE
         ),
         user=(
             f"Task type: {state.get('task_type', 'unknown')}\n"
             f"Framing type: {state.get('framing_type', 'unknown')}\n"
             f"Goal: {goal}\n\n"
-            f"Code excerpts from similar competitions:\n{_format_docs(docs)}"
+            f"Code excerpts from similar problems:\n{_format_docs(docs)}"
         ),
         response_model=SurfacedSignals,
     )
@@ -167,7 +167,7 @@ def flag_assumptions(state: PipelineState) -> dict:
             f"Goal: {goal}\n"
             f"Available signals: {state.get('available_signals', [])}\n"
             f"Desired signals: {state.get('desired_signals', [])}\n\n"
-            f"Code excerpts from similar competitions:\n{_format_docs(docs)}"
+            f"Code excerpts from similar problems:\n{_format_docs(docs)}"
         ),
         response_model=AssumptionFlags,
         max_tokens=2048,
@@ -219,7 +219,7 @@ def advise_approach(state: PipelineState) -> dict:
             f"Desired signals: {state.get('desired_signals', [])}\n"
             f"Prior work: {state.get('prior_work', [])}\n"
             f"Assumption flags (indexed):\n{_format_flags(flags)}\n\n"
-            f"Code excerpts from similar competitions:\n{_format_docs(docs)}"
+            f"Code excerpts from similar problems:\n{_format_docs(docs)}"
         ),
         response_model=Advice,
         max_tokens=4096,
