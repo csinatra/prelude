@@ -125,6 +125,8 @@ python -m ingest.ingest_summaries   # → notebook_summaries (one LLM abstract p
 Pass `--rebuild` to `ingest_metadata` / `ingest_summaries` to drop and rebuild a
 collection from scratch — required after an embedding-model or summary-prompt
 change (skip-existing resumability would otherwise leave stale records in place).
+For the full-corpus summary run, add `--batch` to `ingest_summaries` (Anthropic
+Message Batches API, 50% discount, async with resume-on-interrupt).
 
 The similarity threshold (`SIMILARITY_THRESHOLD` env var) is deliberately
 unset — to be calibrated against the real corpus on 5–10 dev competitions

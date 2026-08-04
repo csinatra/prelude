@@ -245,31 +245,45 @@ result = app.invoke(input={"problem_statement": "..."})
 
 ## Current state
 
-Four-stage C2 pipeline plus B1/B2/C1 conditions built and
-live-verified end-to-end. Dev corpus ingested: 1,005 metadata
-chunks, 62,379 practitioner chunks, 5,937 notebook summaries.
-Spec-side harness working: per-condition spec.md renderer,
-append-only runs.jsonl registry, per-run artifacts with
-provenance + usage ledger. Threshold calibration decided pre-run:
-SIMILARITY_THRESHOLD=None for v1. Cloud-box half scaffolded
-(aide-prelude agent variant, advancement CLI, provisioning
-script) but unverified — no GPU box yet.
-History: [docs/PROGRESS.md](docs/PROGRESS.md).
+Four-stage C2 pipeline plus B1/B2/C1 conditions built and unit-tested.
+Retrieval unit is the notebook **summary** (code-chunk retrieval retired after a
+2026-08-03 probe); staged conditions use directed per-stage retrieval with
+cross-stage top-up for distinct-document parity with B. Prompts generalized
+beyond Kaggle framing; summaries are richer whole-notebook abstracts (pinned
+Haiku). Embedding model switched to `voyage-4-large` (general-purpose fits the
+now NL↔NL retrieval); batch-mode summary ingest built (`ingest_summaries
+--batch`, Message Batches API).
+
+Spec-side harness working: per-condition spec.md renderer, append-only
+runs.jsonl registry, per-run artifacts with provenance + usage ledger.
+SIMILARITY_THRESHOLD=None for v1. Cloud-box verified end-to-end (2026-07-24):
+box provisioned, smoke run GREEN (Haiku → valid graded submission), B/C spec
+injection confirmed via the PRELUDE_SPEC_PATH mount.
+
+**Pending re-ingest:** the live ChromaDB store still holds the old voyage-code-3
+summaries — the new prompt + voyage-4-large take effect only after
+`ingest_metadata --rebuild` + `ingest_summaries --rebuild` (dev Lite-22 first;
+`practitioner_knowledge` to be dropped), after which the pipeline is re-verified
+end-to-end. History: [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Next
-1. Cloud-box half of the harness: inject spec.md into AIDE inside the
-   MLE-bench container (no LLM calls in there — core constraint 1),
-   advance runs through agent_run → graded in runs.jsonl, wire MLE-bench
-   grading + secondary metrics into the registry.
-2. Corpus expansion before production runs: remaining Code4ML summaries
-   via the Anthropic Batch API (~$200 decision recorded in
-   COST_ESTIMATE.md; needs a batch-mode ingest variant), then size
-   MLEModernizer after opening the tarball on the cloud box (unit count +
-   native-abstract check first). Re-run the calibration sweep after any
-   expansion — thresholds are corpus-relative.
-3. Eval runs per RESEARCH_DESIGN.md (B1/B2/C1-pilot/C2, ~10 Lite
-   competitions × 3 seeds, Sonnet) + mechanistic judging via
-   analysis/judge.py against the frozen rubric.
+1. Re-ingest the dev corpus under the new prompt + `voyage-4-large`
+   (`ingest_metadata --rebuild`, `ingest_summaries --rebuild`; drop
+   `practitioner_knowledge`), then re-verify the pipeline end-to-end.
+2. Re-run the `SIMILARITY_THRESHOLD` calibration before eval runs — thresholds
+   are corpus-relative and both the retrieval representation (summary unit) and
+   the embedding model changed (currently `None` for v1).
+3. Cloud-box harness: spec injection + a single-run smoke are verified
+   (2026-07-24). Remaining — exercise the automated batch drain end-to-end (the
+   grade-via-JSONL + journal-metric seams are unexercised on a real multi-run),
+   and complete the all-cloud spec-runner migration (decided, deferred —
+   DECISIONS.md 2026-07-24).
+4. Corpus scale-up to full Code4ML via `ingest.ingest_summaries --batch` (built),
+   then size MLEModernizer after opening the tarball on the cloud box (unit count
+   + native-abstract check first). Re-calibrate after any expansion.
+5. Eval runs per RESEARCH_DESIGN.md (B1/B2/C1-pilot/C2 on the POC-scope Lite
+   subset × 3 seeds, Sonnet) + mechanistic judging via analysis/judge.py against
+   the frozen rubric.
 
 ## Out of scope (don't propose these unprompted)
 
