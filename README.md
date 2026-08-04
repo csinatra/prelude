@@ -18,10 +18,11 @@ That gap, between stating a goal and understanding a problem well enough to act 
 
 ## Research question
 
-Does structured reasoning over retrieved organizational knowledge improve ML
-problem specification quality and downstream agent performance — measured
-against MLE-bench baselines — beyond what unstructured knowledge provision
-achieves?
+Does directed retrieval and structured reasoning over practitioner knowledge
+improve ML problem specification quality and downstream agent performance beyond
+what unstructured knowledge retrieval achieves? Specification quality is judged
+against a frozen rubric while downstream performance is measured against
+MLE-bench baselines.
 
 ## Conditions
 
