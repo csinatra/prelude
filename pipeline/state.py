@@ -21,4 +21,8 @@ class PipelineState(TypedDict, total=False):
     retrieved_surface: list[dict]
     retrieved_flag: list[dict]
     retrieved_advise: list[dict]
+    # doc_ids of notebook summaries already surfaced by an earlier stage; threaded
+    # through the ordered stages so retrieve_with_topup keeps each stage's distinct
+    # contribution at STAGE_N_NOTEBOOKS (cross-stage top-up, distinct-doc parity).
+    retrieved_seen: set[str]
     stage_trace: list[str]

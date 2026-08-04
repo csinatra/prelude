@@ -19,38 +19,32 @@ def _doc(*, doc_id: str, similarity: float, source_type: str = "code_block", kag
 
 @pytest.fixture()
 def mock_retrieval(monkeypatch):
-    calls = {"flat": [], "two_level": []}
+    calls = []
 
     def fake_retrieve(*, query, collection, exclude_competition, k=5, score_threshold=None):
-        calls["flat"].append({"query": query, "collection": collection, "exclude": exclude_competition, "k": k})
-        return [_doc(doc_id="meta_0", similarity=0.9, source_type="competition_description")]
-
-    def fake_two_level(
-        *, query, exclude_competition, n_notebooks=8, chunks_per_notebook=3, score_threshold=None
-    ):
-        calls["two_level"].append(
-            {"query": query, "exclude": exclude_competition, "n": n_notebooks, "m": chunks_per_notebook}
-        )
+        calls.append({"query": query, "collection": collection, "exclude": exclude_competition, "k": k})
+        if collection == "competition_metadata":
+            return [_doc(doc_id="meta_0", similarity=0.9, source_type="competition_description")]
         return [
-            _doc(doc_id="chunk_a", similarity=0.8, kaggle_id=111),
-            _doc(doc_id="chunk_b", similarity=0.7, kaggle_id=222),
+            _doc(doc_id="nb_a", similarity=0.8, source_type="notebook_summaries", kaggle_id=111),
+            _doc(doc_id="nb_b", similarity=0.7, source_type="notebook_summaries", kaggle_id=222),
         ]
 
     monkeypatch.setattr(baseline, "retrieve", fake_retrieve)
-    monkeypatch.setattr(baseline, "retrieve_two_level", fake_two_level)
     return calls
 
 
-def test_flat_retrieve_combines_metadata_and_notebook_cards(mock_retrieval):
+def test_flat_retrieve_combines_metadata_and_notebook_summaries(mock_retrieval):
     docs = baseline._flat_retrieve(raw_problem="desc", competition_id="current-comp")
-    assert [doc.doc_id for doc in docs] == ["meta_0", "chunk_a", "chunk_b"]
-    # single flat query on each path, leave-one-out applied, budget from config
-    assert len(mock_retrieval["flat"]) == 1
-    assert len(mock_retrieval["two_level"]) == 1
-    assert mock_retrieval["flat"][0]["k"] == baseline.METADATA_K
-    assert mock_retrieval["two_level"][0]["n"] == baseline.BASELINE_N_NOTEBOOKS
-    assert mock_retrieval["two_level"][0]["query"] == "desc"
-    assert mock_retrieval["two_level"][0]["exclude"] == "current-comp"
+    assert [doc.doc_id for doc in docs] == ["meta_0", "nb_a", "nb_b"]
+    # one flat query per collection, leave-one-out applied, budgets from config
+    assert len(mock_retrieval) == 2
+    meta_call = next(c for c in mock_retrieval if c["collection"] == "competition_metadata")
+    nb_call = next(c for c in mock_retrieval if c["collection"] == "notebook_summaries")
+    assert meta_call["k"] == baseline.METADATA_K
+    assert nb_call["k"] == baseline.BASELINE_N_NOTEBOOKS
+    assert nb_call["query"] == "desc"
+    assert nb_call["exclude"] == "current-comp"
 
 
 def test_b1_returns_context_block_without_llm(mock_retrieval, monkeypatch):
@@ -76,6 +70,6 @@ def test_b2_adds_freeform_advice(mock_retrieval, monkeypatch):
     result = baseline.run_b2(raw_problem="desc", competition_id="current-comp")
     assert result["condition"] == "B2"
     assert result["advice"] == "freeform advice prose"
-    assert "content of chunk_a" in seen["user"]
+    assert "content of nb_a" in seen["user"]
     # B2 must not carry Condition C2's critical-integration stance
     assert "not a boundary" not in seen["system"]

@@ -64,41 +64,17 @@ def test_k_caps_results(fixture_collection):
 
 
 @pytest.fixture()
-def two_level_fixture(tmp_path, monkeypatch):
+def summaries_fixture(tmp_path, monkeypatch):
+    """Six notebook summaries ranked by decreasing similarity to query [1, 0]."""
     client = chromadb.PersistentClient(path=str(tmp_path))
     summaries = client.create_collection(
         name="notebook_summaries", metadata={"hnsw:space": "cosine"}
     )
     summaries.add(
-        ids=["nb_1", "nb_2", "nb_3"],
-        embeddings=[[1.0, 0.0], [0.9, 0.1], [0.0, 1.0]],
-        documents=["current-comp notebook", "relevant notebook", "irrelevant notebook"],
-        metadatas=[
-            {"competition_id": "current-comp", "kaggle_id": 1},
-            {"competition_id": "other-comp", "kaggle_id": 2},
-            {"competition_id": "far-comp", "kaggle_id": 3},
-        ],
-    )
-    chunks = client.create_collection(
-        name="practitioner_knowledge", metadata={"hnsw:space": "cosine"}
-    )
-    chunks.add(
-        ids=["c1a", "c2a", "c2b", "c2c", "c3a"],
-        embeddings=[[1.0, 0.0], [0.95, 0.05], [0.9, 0.1], [0.5, 0.5], [0.1, 0.9]],
-        documents=[
-            "chunk of held-out notebook",
-            "chunk 2a",
-            "chunk 2b",
-            "chunk 2c",
-            "only chunk of notebook 3",
-        ],
-        metadatas=[
-            {"competition_id": "current-comp", "source_type": "code_block", "kaggle_id": 1},
-            {"competition_id": "other-comp", "source_type": "code_block", "kaggle_id": 2},
-            {"competition_id": "other-comp", "source_type": "code_block", "kaggle_id": 2},
-            {"competition_id": "other-comp", "source_type": "code_block", "kaggle_id": 2},
-            {"competition_id": "far-comp", "source_type": "code_block", "kaggle_id": 3},
-        ],
+        ids=[f"nb_{i}" for i in range(1, 7)],
+        embeddings=[[1.0, 0.0], [0.99, 0.14], [0.95, 0.31], [0.9, 0.44], [0.8, 0.6], [0.6, 0.8]],
+        documents=[f"summary {i}" for i in range(1, 7)],
+        metadatas=[{"competition_id": "other-comp", "kaggle_id": i} for i in range(1, 7)],
     )
     monkeypatch.setattr(retriever, "_client", client)
     monkeypatch.setattr(
@@ -106,27 +82,32 @@ def two_level_fixture(tmp_path, monkeypatch):
     )
 
 
-def test_two_level_leave_one_out_at_notebook_level(two_level_fixture):
-    docs = retriever.retrieve_two_level(
-        query="anything", exclude_competition="current-comp", n_notebooks=3, chunks_per_notebook=2
+def test_topup_no_repeats_returns_plain_top_k(summaries_fixture):
+    seen: set[str] = set()
+    docs = retriever.retrieve_with_topup(
+        query="anything", collection="notebook_summaries",
+        exclude_competition="none", k=2, seen=seen,
     )
-    assert all(doc.competition_id != "current-comp" for doc in docs)
-    assert "c1a" not in [doc.doc_id for doc in docs]
+    assert [doc.doc_id for doc in docs] == ["nb_1", "nb_2"]
+    assert seen == {"nb_1", "nb_2"}  # contributed k=2 distinct
 
 
-def test_two_level_chunks_restricted_to_surfaced_notebooks(two_level_fixture):
-    docs = retriever.retrieve_two_level(
-        query="anything", exclude_competition="current-comp", n_notebooks=1, chunks_per_notebook=3
+def test_topup_retains_repeat_and_adds_distinct_doc(summaries_fixture):
+    seen = {"nb_1"}  # a prior stage already surfaced nb_1
+    docs = retriever.retrieve_with_topup(
+        query="anything", collection="notebook_summaries",
+        exclude_competition="none", k=2, seen=seen,
     )
-    # only notebook 2 is surfaced (closest non-excluded summary)
-    assert {doc.kaggle_id for doc in docs} == {2}
-    assert len(docs) == 3
+    # nb_1 (repeat) retained as importance signal; nb_3 topped up for the repeat
+    assert [doc.doc_id for doc in docs] == ["nb_1", "nb_2", "nb_3"]
+    # still contributes k=2 NEW distinct docs (nb_2, nb_3)
+    assert seen == {"nb_1", "nb_2", "nb_3"}
 
 
-def test_two_level_notebook_with_fewer_chunks_than_m(two_level_fixture):
-    docs = retriever.retrieve_two_level(
-        query="anything", exclude_competition="other-comp", n_notebooks=3, chunks_per_notebook=4
+def test_topup_leave_one_out_applies(summaries_fixture):
+    seen: set[str] = set()
+    docs = retriever.retrieve_with_topup(
+        query="anything", collection="notebook_summaries",
+        exclude_competition="other-comp", k=2, seen=seen,
     )
-    # far-comp's notebook 3 has a single chunk; requesting M=4 returns just it
-    assert {doc.kaggle_id for doc in docs} == {1, 3}
-    assert len([doc for doc in docs if doc.kaggle_id == 3]) == 1
+    assert docs == []  # every notebook is other-comp; leave-one-out excludes all

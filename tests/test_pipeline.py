@@ -1,7 +1,7 @@
 """Unit tests for the C2 four-stage spec pipeline. No real API or corpus
 calls — pipeline.nodes.call_llm is monkeypatched with canned responses keyed
 off the system prompt for each stage, and both retrieval seams
-(pipeline.nodes.retrieve / retrieve_two_level) with canned document lists.
+(pipeline.nodes.retrieve / retrieve_with_topup) with canned document lists.
 """
 
 import pytest
@@ -20,11 +20,11 @@ FAKE_META_DOC = RetrievedDoc(
     similarity=0.71,
 )
 
-FAKE_CHUNK_DOC = RetrievedDoc(
-    doc_id="block_abc_0",
+FAKE_SUMMARY_DOC = RetrievedDoc(
+    doc_id="nb_12345",
     competition_id="some-other-competition",
-    source_type="code_block",
-    text="model = XGBClassifier()",
+    source_type="notebook_summaries",
+    text="stacked TF-IDF + logistic regression, 5-fold CV on log loss",
     similarity=0.83,
     kaggle_id=12345,
 )
@@ -91,17 +91,17 @@ def _fake_retrieve(*, query, collection, exclude_competition, k=5, score_thresho
     return [FAKE_META_DOC]
 
 
-def _fake_retrieve_two_level(
-    *, query, exclude_competition, n_notebooks=8, chunks_per_notebook=3, score_threshold=None
-):
-    return [FAKE_CHUNK_DOC]
+def _fake_retrieve_with_topup(*, query, collection, exclude_competition, k, seen, score_threshold=None):
+    assert collection == "notebook_summaries"
+    seen.add(FAKE_SUMMARY_DOC.doc_id)
+    return [FAKE_SUMMARY_DOC]
 
 
 @pytest.fixture(autouse=True)
 def mock_seams(monkeypatch):
     monkeypatch.setattr(nodes, "call_llm", _fake_call_llm)
     monkeypatch.setattr(nodes, "retrieve", _fake_retrieve)
-    monkeypatch.setattr(nodes, "retrieve_two_level", _fake_retrieve_two_level)
+    monkeypatch.setattr(nodes, "retrieve_with_topup", _fake_retrieve_with_topup)
 
 
 def test_graph_compiles():
@@ -129,6 +129,7 @@ def test_state_keys():
         "retrieved_surface",
         "retrieved_flag",
         "retrieved_advise",
+        "retrieved_seen",
         "stage_trace",
     } <= keys
 
@@ -157,7 +158,8 @@ def test_surface_signals_updates_state():
     }
     result = nodes.surface_signals(state)
     assert result["available_signals"] == FAKE_PAYLOADS["ML data scientist"]["available_signals"]
-    assert result["retrieved_surface"] == [FAKE_CHUNK_DOC.model_dump()]
+    assert result["retrieved_surface"] == [FAKE_SUMMARY_DOC.model_dump()]
+    assert result["retrieved_seen"] == {FAKE_SUMMARY_DOC.doc_id}
     assert result["stage_trace"] == ["parse_problem", "surface_signals"]
 
 

@@ -18,7 +18,7 @@ Design notes:
 """
 
 from pipeline.condition_b import FREEFORM_SYSTEM
-from pipeline.config import STAGE_CHUNKS_PER_NOTEBOOK, STAGE_N_NOTEBOOKS
+from pipeline.config import NOTEBOOK_SUMMARIES, STAGE_N_NOTEBOOKS
 from pipeline.llm_client import call_llm_text
 from pipeline.nodes import (
     _format_docs,
@@ -27,7 +27,7 @@ from pipeline.nodes import (
     parse_problem,
     surface_query,
 )
-from pipeline.retriever import RetrievedDoc, retrieve_two_level
+from pipeline.retriever import RetrievedDoc, retrieve_with_topup
 
 
 def run_c1(*, raw_problem: str, competition_id: str) -> dict:
@@ -41,16 +41,20 @@ def run_c1(*, raw_problem: str, competition_id: str) -> dict:
     }
 
     retrieved_by_stage = {"parse": [RetrievedDoc(**doc) for doc in parse_update["retrieved_parse"]]}
+    # Same cross-stage top-up as C2 (shared `seen`), so C1's pooled block carries
+    # 3 x STAGE_N_NOTEBOOKS distinct summaries — distinct-doc parity with B.
+    seen: set[str] = set()
     for stage, query_builder in [
         ("surface", surface_query),
         ("flag", flag_query),
         ("advise", advise_query),
     ]:
-        retrieved_by_stage[stage] = retrieve_two_level(
+        retrieved_by_stage[stage] = retrieve_with_topup(
             query=query_builder(**query_fields),
+            collection=NOTEBOOK_SUMMARIES,
             exclude_competition=competition_id,
-            n_notebooks=STAGE_N_NOTEBOOKS,
-            chunks_per_notebook=STAGE_CHUNKS_PER_NOTEBOOK,
+            k=STAGE_N_NOTEBOOKS,
+            seen=seen,
         )
 
     # One flat block for synthesis, deduped across stages (stages can surface

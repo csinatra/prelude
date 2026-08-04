@@ -70,14 +70,19 @@ pipeline stages, and prior art.
    pin test (deferred 2026-07-19) will mechanically enforce this
    immediately before eval runs begin.
 
-8. **Document-budget parity is a research-validity invariant.** Condition
-   B's flat document budget must equal the staged conditions' total
-   (`METADATA_K` ~ parse; `BASELINE_N_NOTEBOOKS × BASELINE_CHUNKS_PER_NOTEBOOK`
-   = 3 practitioner stages × `STAGE_N_NOTEBOOKS` × `STAGE_CHUNKS_PER_NOTEBOOK`).
-   Changing any budget in `pipeline/config.py` requires re-checking this
-   parity; a mismatch invalidates cross-condition comparison. Note this is
-   parity of *documents retrieved*, not injected tokens — token counts are
-   logged per run (block/synthesis split) and reported, not equalized.
+8. **Document-budget parity is a research-validity invariant.** The
+   retrieval unit is the notebook **summary** (one notebook = one document).
+   Condition B and the staged conditions must reason over the same number of
+   **distinct** notebook-summary documents, plus equal metadata (`METADATA_K`
+   ~ parse). B draws `BASELINE_N_NOTEBOOKS` in one flat pass; C's 3 directed
+   stages each contribute `STAGE_N_NOTEBOOKS` *new* distinct docs via cross-stage
+   top-up (`retriever.retrieve_with_topup` — repeats across stages are retained
+   as an importance signal and backfilled with the next-best unseen doc), so
+   `BASELINE_N_NOTEBOOKS = 3 × STAGE_N_NOTEBOOKS`. Changing any budget in
+   `pipeline/config.py` requires re-checking this parity; a mismatch invalidates
+   cross-condition comparison. Parity is on *distinct documents*, not injected
+   tokens — the token asymmetry from retained repeats is logged per run
+   (block/synthesis split) and reported, not equalized.
 
 ## Commands
 
@@ -177,8 +182,8 @@ pipeline/
 │                           #   evidence-cited, confidence-rated) and Recommendation
 │                           #   (approach/tradeoff/failure_mode linked to flags by flag_id)
 ├── llm_client.py           # call_llm() schema-constrained + call_llm_text() freeform
-├── retriever.py             # retrieve() flat + retrieve_two_level() notebook-then-chunk;
-│                             #   leave-one-out enforced in BOTH
+├── retriever.py             # retrieve() flat top-k + retrieve_with_topup() staged
+│                             #   (cross-stage distinct-doc top-up); leave-one-out in BOTH
 ├── embeddings.py             # embed() — voyage-code-3 for documents and queries, batched
 ├── condition_b.py             # Condition B: run_b1() raw block, run_b2() freeform pass
 ├── condition_c1.py             # Condition C1: staged retrieval + B2 freeform synthesis

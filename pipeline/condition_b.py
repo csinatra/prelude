@@ -10,11 +10,12 @@ problem description; no stage-directed queries):
   the staged conditions' advantage is attributable to structure specifically.
 
 Retrieval unit is held constant with the staged conditions: practitioner
-knowledge arrives as "notebook cards" via retrieve_two_level (flat query
-here; stage-directed queries in C1/C2), plus flat chunk retrieval over
-competition_metadata. Budgets are parity-matched to C's staged totals
-(metadata k=5 ~ parse; 9 notebooks x 3 chunks ~ 3 stages x 3 notebooks x 3
-chunks) — calibration knobs, not hardcoded design.
+knowledge arrives as notebook summaries via a flat retrieve() here (stage-
+directed queries in C1/C2), plus flat chunk retrieval over competition_metadata.
+Budgets are parity-matched to C's staged totals on DISTINCT documents
+(metadata k=5 ~ parse; BASELINE_N_NOTEBOOKS summaries == 3 stages x
+STAGE_N_NOTEBOOKS distinct, achieved in C via cross-stage top-up) — calibration
+knobs, not hardcoded design.
 
 B2's prompt deliberately omits Condition C2's RETRIEVAL_STANCE: uncritical
 adoption of provided knowledge is the AssistedDS failure mode the baseline
@@ -22,14 +23,14 @@ must be free to exhibit.
 """
 
 from pipeline.config import (
-    BASELINE_CHUNKS_PER_NOTEBOOK,
     BASELINE_N_NOTEBOOKS,
     COMPETITION_METADATA,
     METADATA_K,
+    NOTEBOOK_SUMMARIES,
 )
 from pipeline.llm_client import call_llm_text
 from pipeline.nodes import _format_docs
-from pipeline.retriever import RetrievedDoc, retrieve, retrieve_two_level
+from pipeline.retriever import RetrievedDoc, retrieve
 
 # Shared by B2 and C1: freeform synthesis over provided context, deliberately
 # without Condition C2's RETRIEVAL_STANCE (uncritical adoption is the
@@ -48,13 +49,17 @@ def _flat_retrieve(*, raw_problem: str, competition_id: str) -> list[RetrievedDo
         exclude_competition=competition_id,
         k=METADATA_K,
     )
-    notebook_cards = retrieve_two_level(
+    # One flat pass over notebook summaries — a single top-k has no internal
+    # repeats, so B naturally sees BASELINE_N_NOTEBOOKS distinct summaries (no
+    # top-up needed; that machinery exists only to restore distinct parity for
+    # the staged conditions).
+    notebook_docs = retrieve(
         query=raw_problem,
+        collection=NOTEBOOK_SUMMARIES,
         exclude_competition=competition_id,
-        n_notebooks=BASELINE_N_NOTEBOOKS,
-        chunks_per_notebook=BASELINE_CHUNKS_PER_NOTEBOOK,
+        k=BASELINE_N_NOTEBOOKS,
     )
-    return metadata_docs + notebook_cards
+    return metadata_docs + notebook_docs
 
 
 def run_b1(*, raw_problem: str, competition_id: str) -> dict:

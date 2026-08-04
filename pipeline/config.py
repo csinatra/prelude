@@ -1,11 +1,15 @@
 """Central tunables for retrieval and condition budgets.
 
 One place to calibrate; nothing here is hardcoded design. Parity invariant to
-preserve when editing: Condition B's flat budget should match the staged
-conditions' total (METADATA_K ~ parse; BASELINE_N_NOTEBOOKS x
-BASELINE_CHUNKS_PER_NOTEBOOK ~ 3 practitioner stages x STAGE_N_NOTEBOOKS x
-STAGE_CHUNKS_PER_NOTEBOOK) so flat-vs-staged comparisons are not confounded
-by document budget.
+preserve when editing: Condition B and the staged conditions must reason over
+the same number of DISTINCT notebook-summary documents (plus equal metadata).
+B draws BASELINE_N_NOTEBOOKS summaries in one flat pass; the staged conditions
+draw STAGE_N_NOTEBOOKS per directed stage across 3 stages, with cross-stage
+top-up (retriever.retrieve_with_topup) so each stage contributes
+STAGE_N_NOTEBOOKS NEW distinct docs. Hence BASELINE_N_NOTEBOOKS ==
+3 x STAGE_N_NOTEBOOKS, and METADATA_K == RETRIEVAL_K. Parity is on distinct
+documents, not tokens (duplicates re-surfaced across stages are retained as an
+importance signal and add logged tokens). See docs/DECISIONS.md (2026-08-03).
 """
 
 import os
@@ -20,20 +24,20 @@ EVAL_MODEL = "claude-sonnet-5"
 
 # ── Collections ─────────────────────────────────────────────────────
 COMPETITION_METADATA = "competition_metadata"
+# Ingested and retained, but NOT queried at spec time: the retrieval unit is the
+# notebook summary (2026-08-03 probe — code chunks added little transferable
+# signal over a rich summary at multiples of the token cost). Kept for a possible
+# future curated-cell grounding path.
 PRACTITIONER_KNOWLEDGE = "practitioner_knowledge"
 NOTEBOOK_SUMMARIES = "notebook_summaries"
 
 # ── Staged conditions (C1/C2) ───────────────────────────────────────
 RETRIEVAL_K = 5  # parse stage, competition_metadata (flat chunk retrieval)
-# Per-stage notebook-card budget (review-doc starting range; calibrate
-# before eval runs): 3 practitioner stages x 8 x 3 = 72 chunks.
-STAGE_N_NOTEBOOKS = 8
-STAGE_CHUNKS_PER_NOTEBOOK = 3
+STAGE_N_NOTEBOOKS = 8  # distinct notebook-summary docs contributed per directed stage
 
 # ── Condition B (flat) ──────────────────────────────────────────────
 METADATA_K = 5  # parity with the parse stage
-BASELINE_N_NOTEBOOKS = 24  # parity with 3 stages x STAGE_N_NOTEBOOKS
-BASELINE_CHUNKS_PER_NOTEBOOK = 3
+BASELINE_N_NOTEBOOKS = 24  # parity: == 3 staged stages x STAGE_N_NOTEBOOKS distinct summaries
 
 # ── Retrieval quality ───────────────────────────────────────────────
 # Deliberately unset by default — calibrate against the real corpus before

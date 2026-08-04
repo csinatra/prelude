@@ -30,12 +30,17 @@ def mock_seams(monkeypatch):
 
     queries = []
 
-    def fake_two_level(
-        *, query, exclude_competition, n_notebooks=8, chunks_per_notebook=3, score_threshold=None
-    ):
+    def fake_retrieve_with_topup(*, query, collection, exclude_competition, k, seen, score_threshold=None):
         queries.append(query)
-        # same doc returned for every stage — exercises cross-stage dedupe
-        return [_doc(doc_id="chunk_shared", kaggle_id=111), _doc(doc_id=f"chunk_{len(queries)}", kaggle_id=222)]
+        # same shared doc returned for every stage — exercises cross-stage dedupe
+        # in the rendered block; the per-stage unique doc stands in for top-up.
+        docs = [
+            _doc(doc_id="chunk_shared", kaggle_id=111, source_type="notebook_summaries"),
+            _doc(doc_id=f"chunk_{len(queries)}", kaggle_id=222, source_type="notebook_summaries"),
+        ]
+        for doc in docs:
+            seen.add(doc.doc_id)
+        return docs
 
     captured = {}
 
@@ -45,7 +50,7 @@ def mock_seams(monkeypatch):
         return "freeform staged advice"
 
     monkeypatch.setattr(c1, "parse_problem", fake_parse)
-    monkeypatch.setattr(c1, "retrieve_two_level", fake_two_level)
+    monkeypatch.setattr(c1, "retrieve_with_topup", fake_retrieve_with_topup)
     monkeypatch.setattr(c1, "call_llm_text", fake_llm_text)
     return {"queries": queries, "captured": captured}
 
