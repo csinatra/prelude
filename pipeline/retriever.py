@@ -14,12 +14,7 @@ from chromadb.api.models.Collection import Collection
 from langsmith import traceable
 from pydantic import BaseModel
 
-from pipeline.config import (
-    CHROMA_PATH,
-    NOTEBOOK_SUMMARIES,
-    PRACTITIONER_KNOWLEDGE,
-    SIMILARITY_THRESHOLD,
-)
+from pipeline.config import CHROMA_PATH, SIMILARITY_THRESHOLD
 from pipeline.embeddings import embed
 
 _client: chromadb.ClientAPI | None = None
@@ -79,60 +74,43 @@ def retrieve(
 
 
 @traceable(run_type="retriever")
-def retrieve_two_level(
+def retrieve_with_topup(
     *,
     query: str,
+    collection: str,
     exclude_competition: str,
-    n_notebooks: int = 8,
-    chunks_per_notebook: int = 3,
+    k: int,
+    seen: set[str],
     score_threshold: float | None = SIMILARITY_THRESHOLD,
 ) -> list[RetrievedDoc]:
-    """Notebook-then-chunk retrieval over practitioner knowledge.
+    """Directed retrieval with cross-stage top-up for distinct-document parity.
 
-    (a) query notebook_summaries (leave-one-out filter) for top-N notebooks,
-    (b) query practitioner_knowledge restricted to those kaggle_ids for top-M
-    chunks per notebook. No leave-one-out re-check needed at (b): step (a)
-    already excluded the current competition's notebooks.
-
-    This is the retrieval unit for ALL conditions' practitioner-knowledge
-    access ("notebook cards" — coherent per-notebook excerpt groups): B calls
-    it once with a flat query; C1/C2 call it per stage with directed queries.
-    Holding the unit constant means the flat-vs-staged comparison isolates
-    query structure, not retrieval granularity. The chunk-level `retrieve()`
-    above remains for competition_metadata (no notebook structure).
+    Returns the stage's context: its top-k docs by `query`, where a doc already
+    in `seen` from an earlier stage is RETAINED (re-selection across stages is
+    an importance signal, not a duplicate to drop) AND, for each such repeat,
+    the next-best doc not yet in `seen` is appended. Every call therefore
+    contributes k documents new to `seen`, so the staged conditions surface the
+    same distinct-document budget as Condition B's flat pass (parity is on
+    distinct documents, not tokens). `seen` is mutated with the new doc_ids.
+    See docs/DECISIONS.md (2026-08-03 retrieval-unit entry).
     """
-    query_vector = embed(texts=[query], input_type="query")[0]
-    summaries = _get_collection(name=NOTEBOOK_SUMMARIES).query(
-        query_embeddings=[query_vector],
-        n_results=n_notebooks,
-        where={"competition_id": {"$ne": exclude_competition}},
-        include=["metadatas"],
+    pool = retrieve(
+        query=query,
+        collection=collection,
+        exclude_competition=exclude_competition,
+        k=k * 6,  # headroom for top-up: covers up to k repeats past the primary k
+        score_threshold=score_threshold,
     )
-    kaggle_ids = [int(metadata["kaggle_id"]) for metadata in summaries["metadatas"][0]]
-
-    chunks_collection = _get_collection(name=PRACTITIONER_KNOWLEDGE)
-    docs: list[RetrievedDoc] = []
-    for kaggle_id in kaggle_ids:
-        result = chunks_collection.query(
-            query_embeddings=[query_vector],
-            n_results=chunks_per_notebook,
-            where={"kaggle_id": kaggle_id},
-            include=["documents", "metadatas", "distances"],
-        )
-        for doc_id, text, metadata, distance in zip(
-            result["ids"][0], result["documents"][0], result["metadatas"][0], result["distances"][0]
-        ):
-            similarity = 1.0 - distance
-            if score_threshold is not None and similarity < score_threshold:
-                continue
-            docs.append(
-                RetrievedDoc(
-                    doc_id=doc_id,
-                    competition_id=str(metadata["competition_id"]),
-                    source_type=str(metadata["source_type"]),
-                    text=text,
-                    similarity=similarity,
-                    kaggle_id=kaggle_id,
-                )
-            )
-    return docs
+    primary = pool[:k]
+    primary_ids = {doc.doc_id for doc in primary}
+    repeats = sum(1 for doc in primary if doc.doc_id in seen)
+    topups: list[RetrievedDoc] = []
+    for doc in pool[k:]:
+        if len(topups) >= repeats:
+            break
+        if doc.doc_id not in seen and doc.doc_id not in primary_ids:
+            topups.append(doc)
+    context = primary + topups
+    for doc in context:
+        seen.add(doc.doc_id)
+    return context

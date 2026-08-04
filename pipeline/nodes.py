@@ -1,12 +1,11 @@
 from pipeline.config import (
     COMPETITION_METADATA,
-    PRACTITIONER_KNOWLEDGE,
+    NOTEBOOK_SUMMARIES,
     RETRIEVAL_K,
-    STAGE_CHUNKS_PER_NOTEBOOK,
     STAGE_N_NOTEBOOKS,
 )
 from pipeline.llm_client import call_llm
-from pipeline.retriever import RetrievedDoc, retrieve, retrieve_two_level
+from pipeline.retriever import RetrievedDoc, retrieve, retrieve_with_topup
 from pipeline.schemas import Advice, AssumptionFlags, ParsedProblem, SurfacedSignals
 from pipeline.state import PipelineState
 
@@ -97,15 +96,17 @@ def parse_problem(state: PipelineState) -> dict:
 
 def surface_signals(state: PipelineState) -> dict:
     goal = state.get("parsed_goal", state["raw_problem"])
-    docs = retrieve_two_level(
+    seen = set(state.get("retrieved_seen", set()))
+    docs = retrieve_with_topup(
         query=surface_query(
             task_type=state.get("task_type", ""),
             evaluation_metric=state.get("evaluation_metric", ""),
             goal=goal,
         ),
+        collection=NOTEBOOK_SUMMARIES,
         exclude_competition=state.get("competition_id", ""),
-        n_notebooks=STAGE_N_NOTEBOOKS,
-        chunks_per_notebook=STAGE_CHUNKS_PER_NOTEBOOK,
+        k=STAGE_N_NOTEBOOKS,
+        seen=seen,
     )
     parsed = call_llm(
         system=(
@@ -120,7 +121,7 @@ def surface_signals(state: PipelineState) -> dict:
             f"Task type: {state.get('task_type', 'unknown')}\n"
             f"Framing type: {state.get('framing_type', 'unknown')}\n"
             f"Goal: {goal}\n\n"
-            f"Code excerpts from similar problems:\n{_format_docs(docs)}"
+            f"Reference notebooks from similar problems:\n{_format_docs(docs)}"
         ),
         response_model=SurfacedSignals,
     )
@@ -129,21 +130,24 @@ def surface_signals(state: PipelineState) -> dict:
         "desired_signals": parsed.desired_signals,
         "prior_work": parsed.prior_work,
         "retrieved_surface": _dump(docs),
+        "retrieved_seen": seen,
         "stage_trace": state["stage_trace"] + ["surface_signals"],
     }
 
 
 def flag_assumptions(state: PipelineState) -> dict:
     goal = state.get("parsed_goal", state["raw_problem"])
-    docs = retrieve_two_level(
+    seen = set(state.get("retrieved_seen", set()))
+    docs = retrieve_with_topup(
         query=flag_query(
             task_type=state.get("task_type", ""),
             evaluation_metric=state.get("evaluation_metric", ""),
             goal=goal,
         ),
+        collection=NOTEBOOK_SUMMARIES,
         exclude_competition=state.get("competition_id", ""),
-        n_notebooks=STAGE_N_NOTEBOOKS,
-        chunks_per_notebook=STAGE_CHUNKS_PER_NOTEBOOK,
+        k=STAGE_N_NOTEBOOKS,
+        seen=seen,
     )
     parsed = call_llm(
         system=(
@@ -167,7 +171,7 @@ def flag_assumptions(state: PipelineState) -> dict:
             f"Goal: {goal}\n"
             f"Available signals: {state.get('available_signals', [])}\n"
             f"Desired signals: {state.get('desired_signals', [])}\n\n"
-            f"Code excerpts from similar problems:\n{_format_docs(docs)}"
+            f"Reference notebooks from similar problems:\n{_format_docs(docs)}"
         ),
         response_model=AssumptionFlags,
         max_tokens=2048,
@@ -180,6 +184,7 @@ def flag_assumptions(state: PipelineState) -> dict:
             for index, flag in enumerate(parsed.flags)
         ],
         "retrieved_flag": _dump(docs),
+        "retrieved_seen": seen,
         "stage_trace": state["stage_trace"] + ["flag_assumptions"],
     }
 
@@ -187,15 +192,17 @@ def flag_assumptions(state: PipelineState) -> dict:
 def advise_approach(state: PipelineState) -> dict:
     goal = state.get("parsed_goal", state["raw_problem"])
     flags = state.get("assumption_flags", [])
-    docs = retrieve_two_level(
+    seen = set(state.get("retrieved_seen", set()))
+    docs = retrieve_with_topup(
         query=advise_query(
             task_type=state.get("task_type", ""),
             evaluation_metric=state.get("evaluation_metric", ""),
             goal=goal,
         ),
+        collection=NOTEBOOK_SUMMARIES,
         exclude_competition=state.get("competition_id", ""),
-        n_notebooks=STAGE_N_NOTEBOOKS,
-        chunks_per_notebook=STAGE_CHUNKS_PER_NOTEBOOK,
+        k=STAGE_N_NOTEBOOKS,
+        seen=seen,
     )
     parsed = call_llm(
         system=(
@@ -219,7 +226,7 @@ def advise_approach(state: PipelineState) -> dict:
             f"Desired signals: {state.get('desired_signals', [])}\n"
             f"Prior work: {state.get('prior_work', [])}\n"
             f"Assumption flags (indexed):\n{_format_flags(flags)}\n\n"
-            f"Code excerpts from similar problems:\n{_format_docs(docs)}"
+            f"Reference notebooks from similar problems:\n{_format_docs(docs)}"
         ),
         response_model=Advice,
         max_tokens=4096,
@@ -227,5 +234,6 @@ def advise_approach(state: PipelineState) -> dict:
     return {
         "recommendations": [rec.model_dump() for rec in parsed.recommendations],
         "retrieved_advise": _dump(docs),
+        "retrieved_seen": seen,
         "stage_trace": state["stage_trace"] + ["advise_approach"],
     }

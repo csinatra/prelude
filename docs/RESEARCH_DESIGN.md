@@ -76,15 +76,13 @@ upfront spec) and on a much smaller, easier task set than MLE-bench Lite.
 ```mermaid
 flowchart LR
     subgraph corpus["Offline corpus build (ingest/)"]
-        c4ml["Code4ML CSVs"] --> pk[("practitioner_knowledge<br/>62k code chunks")]
-        c4ml --> ns[("notebook_summaries<br/>5,937 pinned-Haiku abstracts")]
+        c4ml["Code4ML CSVs"] --> ns[("notebook_summaries<br/>5,937 pinned-Haiku abstracts")]
         descs["mle-bench description.md"] --> cm[("competition_metadata")]
     end
 
     subgraph specbuild["Spec build (dev machine, Anthropic API)"]
         desc["competition description"] --> cond["condition pipeline<br/>B1 / B2 / C1 / C2"]
-        pk -.->|"leave-one-out<br/>retrieval"| cond
-        ns -.-> cond
+        ns -.->|"leave-one-out<br/>retrieval"| cond
         cm -.-> cond
         cond --> spec["spec.md + run artifacts<br/>runs.jsonl: spec_built"]
     end
@@ -124,15 +122,15 @@ change:
 
 ```mermaid
 flowchart TD
-    D["competition description"] --> FQ["two-level retrieval, flat<br/>(single query = full description)"]
-    FQ --> CB["context block<br/>(notebook cards + metadata)"]
+    D["competition description"] --> FQ["flat retrieval<br/>(single query = full description)"]
+    FQ --> CB["context block<br/>(notebook summaries + metadata)"]
     CB --> B1["B1 spec:<br/>context block"]
     CB --> FS1["freeform synthesis<br/>(stance-free)"]
     FS1 --> B2["B2 spec:<br/>block + advice"]
 
     D --> P["parse stage<br/>(structured extraction)"]
     P --> Q["3 directed queries<br/>(surface / flag / advise)"]
-    Q --> SR["two-level retrieval, staged<br/>(same notebook→chunk unit and<br/>total budget as flat; directed queries)"]
+    Q --> SR["staged retrieval<br/>(same summary unit and distinct-doc<br/>budget as flat; cross-stage top-up)"]
     SR --> SCB["staged context block<br/>(deduped across stages)"]
     SCB --> FS2["freeform synthesis<br/>(B2's path, stance-free)"]
     FS2 --> C1["C1 spec:<br/>staged block + advice"]
@@ -160,7 +158,10 @@ verbatim string embedded for similarity search — `flag` and `advise` prepend a
 fixed phrase to the `{task_type} {evaluation_metric} {goal}` fields `parse`
 extracted; `parse` queries with the raw description. Sample hit is the top
 retrieval for `random-acts-of-pizza` (other competitions only, leave-one-out;
-cosine similarity in parens) — the directed queries pull different, on-target code.
+cosine similarity in parens) — the directed queries pull different, on-target
+material. (Hits below are from the pre-2026-08-03 code-chunk retrieval, retained
+as an illustration of query targeting; they will be regenerated against the
+notebook-summary corpus before eval runs — see DECISIONS.md.)
 
 | Stage | Query text | Query target | Sample hit |
 |---|---|---|---|
@@ -213,7 +214,7 @@ synthesis sits on top.*
 ```
 [code4ml_homework-for-students_0 | competition_description]
 'Feature Engineering  Build Models  Submission  Notebooks  csv  Kernel ...'
-  ... top-k practitioner chunks + competition descriptions, flat single query
+  ... top-k notebook summaries + competition descriptions, flat single query
 ```
 
 **B2** ( = B1 + synthesis) — same flat block plus a stance-free advice pass.
@@ -277,14 +278,19 @@ Design notes:
   research question (structured decomposition + directed retrieval vs naive
   provision) is carried by the B/C contrasts and does not require A.
 - **Retrieval unit held constant.** All conditions receive practitioner
-  knowledge as "notebook cards" (top-M chunks from each of N notebooks
-  surfaced via a summaries index) plus flat competition-metadata chunks.
-  B selects notebooks with one flat query; C1/C2 with four stage-directed
-  queries. This confines the flat-vs-staged contrast to query structure
-  rather than retrieval granularity.
-- **Document budgets parity-matched** via `pipeline/config.py` (B's flat
-  budget = staged conditions' total). Exact values are calibration
-  parameters, not design constants.
+  knowledge as **notebook summaries** (one LLM abstract per notebook) plus
+  flat competition-metadata chunks. B retrieves summaries with one flat query;
+  C1/C2 with three stage-directed queries. This confines the flat-vs-staged
+  contrast to query structure rather than retrieval granularity. (The retrieval
+  unit was code chunks until a 2026-08-03 probe found the rich summary already
+  carries the transferable content — see DECISIONS.md.)
+- **Document budgets parity-matched on distinct documents** via
+  `pipeline/config.py`: B and C reason over the same number of distinct notebook
+  summaries (`BASELINE_N_NOTEBOOKS` = 3 × `STAGE_N_NOTEBOOKS`), C reaching it via
+  cross-stage top-up (repeats retained as an importance signal, backfilled with
+  the next-best unseen summary). Parity is on distinct docs, not tokens; the
+  token asymmetry from retained repeats is logged, not equalized. Exact values
+  are calibration parameters, not design constants.
 - **C1 holds synthesis at B2's level.** Its staged retrieval feeds a single
   freeform, stance-free pass (no schema, no `RETRIEVAL_STANCE`), so the only
   change from B2 is flat → staged retrieval — see the staged-pipeline tables
@@ -339,28 +345,31 @@ Design notes:
 ## Corpus construction
 
 - **Current dev corpus:** Code4ML filtered to MLE-bench Lite-22 competitions
-  — 62,379 code chunks (deduped from 132,796 cell-level blocks), 1,005
-  competition-metadata chunks (1,156 Code4ML descriptions + 22 mle-bench
-  `description.md`), plus a `notebook_summaries` collection (one abstract
-  per unique notebook) as level one of two-level retrieval. Summaries are
-  corpus infrastructure, generated by a pinned model (Haiku,
-  `summary_model` stamped in metadata) shared identically across all
-  conditions — exempt from the Haiku-dev/Sonnet-eval switch because summary
-  quality affects retrieval uniformly and cannot confound between-condition
-  comparisons.
+  — a `notebook_summaries` collection of 5,937 abstracts (one pinned-Haiku
+  summary per notebook, distilling its cell-level code blocks) as the
+  practitioner-knowledge retrieval unit, plus 1,005 competition-metadata chunks
+  (1,156 Code4ML descriptions + 22 mle-bench `description.md`). Summaries are
+  corpus infrastructure, generated by a pinned model (Haiku, `summary_model`
+  stamped in metadata) shared identically across all conditions — exempt from
+  the Haiku-dev/Sonnet-eval switch because summary quality affects retrieval
+  uniformly and cannot confound between-condition comparisons.
 - **Planned before production runs:** expansion to full Code4ML (~2.74M
   blocks, ~1,150 competitions; the Lite slice is ~5%) and MLEModernizer
   (107 GB replication package — cloud-box ingestion, separate swap).
 - **Leave-one-out:** every retrieval carries
   `competition_id != current_competition`, enforced inside the retrieval
-  seam (`pipeline/retriever.py`); for two-level retrieval the filter applies
-  at the notebook level, which subsumes the chunk level. A code path
-  bypassing this filter is solution leakage (CLAUDE.md core constraint 5).
-- **Two-level rationale:** flat chunk retrieval returns decontextualized
-  fragments from arbitrary notebooks; notebook-then-chunk retrieval returns
-  coherent excerpt groups from notebooks selected as wholes, and lets
-  retrieval reason at the level practitioners work at (a notebook is an
-  approach; a chunk is a step).
+  seam (`pipeline/retriever.py`); retrieval is over notebook summaries and
+  competition-metadata chunks, so the filter excludes the current competition's
+  own artifacts directly. A code path bypassing this filter is solution leakage
+  (CLAUDE.md core constraint 5).
+- **Summary-unit rationale:** the retrieval unit is the notebook summary — a
+  notebook is an approach, and a rich whole-notebook abstract carries the
+  transferable content (models, feature engineering, validation, pitfalls),
+  whereas flat code-chunk retrieval returned decontextualized, often
+  boilerplate-heavy fragments that matched a natural-language problem statement
+  weakly. A 2026-08-03 probe (`analysis/probe_representation.py`; see
+  DECISIONS.md) found curated code cells added little over the summary at
+  multiples of the token cost.
 
 ## Outcome metrics (defined in advance)
 

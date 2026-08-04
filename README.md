@@ -3,8 +3,8 @@
 Structured problem specification before agentic execution begins — a research
 POC on LLM-assisted problem framing for ML engineering.
 
-> **Status (2026-07-26):** pipeline architecture and experimental design
-> complete (B1 / B2 / C1 / C2, two-level retrieval, mechanistic-analysis
+> **Status (2026-08-03):** pipeline architecture and experimental design
+> complete (B1 / B2 / C1 / C2, summary-level staged retrieval, mechanistic-analysis
 > scaffold). AIDE injection path confirmed end-to-end via smoke run.
 > **Evaluation runs not yet executed.**
 
@@ -78,26 +78,26 @@ All corpus access goes through two seams in `pipeline/retriever.py`, both
 enforcing leave-one-out, over a local ChromaDB store (`data/chroma/`,
 gitignored) embedded with Voyage `voyage-code-3`:
 
-- `retrieve()` — flat chunk retrieval. Used for `competition_metadata` (no
-  notebook structure) by every condition.
-- `retrieve_two_level()` — notebook-then-chunk "cards": a
-  `notebook_summaries` collection (one LLM abstract per notebook) surfaces
-  the top-N notebooks, then top-M chunks are pulled from within each. This
-  is the practitioner-knowledge unit for **all** conditions — B calls it
-  once with a flat query, C1/C2 call it per stage with directed queries —
-  so the flat-vs-staged comparison isolates query structure, not retrieval
-  granularity.
+- `retrieve()` — flat top-k retrieval. Used for `competition_metadata` (parse
+  stage) and, over `notebook_summaries`, for Condition B's single flat pass.
+- `retrieve_with_topup()` — the staged practitioner-knowledge unit for C1/C2:
+  each directed stage retrieves top-`STAGE_N` notebook summaries, retaining any
+  a prior stage already surfaced (re-selection is an importance signal) and
+  backfilling each such repeat with the next-best unseen summary, so every stage
+  contributes `STAGE_N` *distinct* documents. The retrieval unit — the notebook
+  **summary** — is held constant across conditions, so the flat-vs-staged
+  comparison isolates query structure, not retrieval granularity.
 
-Budgets are parity-matched knobs in `pipeline/config.py` (B's flat budget =
-staged conditions' total).
+Budgets are parity-matched knobs in `pipeline/config.py`: B and C reason over the
+same number of **distinct** notebook summaries (`BASELINE_N_NOTEBOOKS` =
+3 × `STAGE_N_NOTEBOOKS`).
 
-Three collections:
+Two collections:
 
 | Collection | Contents | Queried by |
 |---|---|---|
 | `competition_metadata` | Code4ML `competitions.csv` + mle-bench `description.md` (Lite-22) — 1,005 chunks across 947 competitions | parse (C1/C2), B flat |
-| `notebook_summaries` | one LLM abstract per unique notebook (level one of two-level retrieval) | all practitioner-knowledge access |
-| `practitioner_knowledge` | Code4ML code blocks — already cell-level chunks, tagged with competition slug, notebook id, and Kaggle score | level two, restricted to surfaced notebooks |
+| `notebook_summaries` | one LLM abstract per unique notebook — the retrieval unit for all practitioner-knowledge access | B flat pass; C1/C2 directed stages |
 
 **Leave-one-out:** every retrieval carries
 `{"competition_id": {"$ne": current_competition_id}}`, enforced inside
@@ -262,7 +262,7 @@ pipeline/
 ├── condition_c1.py       # run_c1() — staged retrieval + freeform synthesis (both artifacts)
 ├── condition_b.py          # run_b1()/run_b2() — flat retrieval conditions
 ├── llm_client.py           # call_llm() schema-constrained + call_llm_text() freeform
-├── retriever.py             # retrieve() + retrieve_two_level() — leave-one-out enforced here
+├── retriever.py             # retrieve() + retrieve_with_topup() — leave-one-out enforced here
 ├── embeddings.py             # embed() — voyage-code-3, single embedding seam
 └── toy.py                     # two-stage smoke pipeline, Anthropic-only
 
