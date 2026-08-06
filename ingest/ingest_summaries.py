@@ -25,6 +25,7 @@ Usage: python -m ingest.ingest_summaries [--limit N] [--rebuild] [--batch]
 import argparse
 import json
 import os
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -65,16 +66,27 @@ POLL_SECONDS = 30
 BATCH_STATE_PATH = Path(CHROMA_PATH).parent / "summaries_batch_state.json"
 
 SUMMARY_SYSTEM = (
-    "You are summarizing a solution notebook for one ML problem so that an engineer facing a "
-    "DIFFERENT but related problem can learn from it. Write a detailed technical abstract of the "
-    "notebook's approach, emphasizing what transfers across problems of this class over details "
-    "specific to this one dataset. Cover, where present: the modeling approach (specific "
-    "estimators or architectures, and notable hyperparameter or configuration choices); feature "
-    "engineering and data transformations (name the concrete derived features or representations, "
-    "not just 'feature engineering'); the validation strategy (resampling scheme and the metric "
-    "it targets); preprocessing and data handling; and any distinctive, non-obvious, or "
-    "failure-mode-avoiding techniques. Prefer specifics an engineer could reuse over "
-    "generalities. Plain prose, no headers, no competition or leaderboard framing."
+    "You are an experienced ML engineer distilling a solution notebook into a knowledge-base "
+    "summary, so that another engineer facing a DIFFERENT but related problem can learn from it.\n\n"
+    "<task>\n"
+    "Write a compact technical abstract of the notebook's approach, emphasizing what transfers "
+    "across problems of this class over dataset-specific detail.\n"
+    "</task>\n\n"
+    "<cover>\n"
+    "Where present, weave in: the modeling approach (specific estimators or architectures and "
+    "notable hyperparameter/configuration choices); feature engineering and data transformations "
+    "(name the concrete derived features or representations); the validation strategy (resampling "
+    "scheme and target metric); key preprocessing; and any distinctive or failure-mode-avoiding "
+    "techniques. Prefer a few reusable specifics over exhaustive coverage.\n"
+    "</cover>\n\n"
+    "<format>\n"
+    "Write in plain, flowing prose — complete sentences in a few short paragraphs. Do not use "
+    "markdown, section headers, bold or italic, or bulleted or numbered lists. Do not mention the "
+    "competition, leaderboard, or Kaggle. Let length track how much genuinely transferable insight "
+    "the notebook holds, not its raw size: prioritize distinctive, reusable specifics and compress "
+    "routine steps. Most summaries should land around 250-350 words; a genuinely information-dense "
+    "notebook may run longer, but never pad to reach a length.\n"
+    "</format>"
 )
 
 
@@ -103,6 +115,24 @@ def _load_notebooks() -> dict[int, dict]:
 
 def _notebook_text(entry: dict) -> str:
     return "\n\n".join(entry["blocks"])[:MAX_NOTEBOOK_CHARS]
+
+
+_HEADER_RE = re.compile(r"^\s{0,3}#{1,6}\s+\S")
+
+
+def _clean_summary(text: str) -> str:
+    """Drop a stray leading markdown header the format rules can't fully suppress
+    (Haiku occasionally prepends a '# Title' line ~a third of the time).
+
+    Conservative by construction: removes only leading blank and header lines and
+    stops at the first prose line — since prose never starts with '# ', it cannot
+    remove a content block, only a redundant title. The body is left untouched.
+    """
+    lines = text.split("\n")
+    start = 0
+    while start < len(lines) and (not lines[start].strip() or _HEADER_RE.match(lines[start])):
+        start += 1
+    return "\n".join(lines[start:]).strip()
 
 
 def _metadata_for(*, kaggle_id: int, entry: dict) -> dict:
@@ -135,7 +165,7 @@ def _summarize(*, kaggle_id: int, entry: dict) -> tuple[int, str]:
         max_tokens=MAX_SUMMARY_TOKENS,
         model=SUMMARY_MODEL,
     )
-    return kaggle_id, abstract
+    return kaggle_id, _clean_summary(abstract)
 
 
 def _run_sync(*, pending: dict[int, dict], collection) -> None:
@@ -228,7 +258,7 @@ def _collect(*, batch_ids: list[str], client: anthropic.Anthropic, notebooks: di
             if entry is None:
                 continue
             ids.append(result.custom_id)
-            texts.append(result.result.message.content[0].text)
+            texts.append(_clean_summary(result.result.message.content[0].text))
             metadatas.append(_metadata_for(kaggle_id=kaggle_id, entry=entry))
         if ids:
             add_documents(collection=collection, ids=ids, texts=texts, metadatas=metadatas)

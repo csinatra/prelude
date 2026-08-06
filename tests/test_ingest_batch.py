@@ -36,6 +36,25 @@ def _client(results=()) -> SimpleNamespace:
     return SimpleNamespace(messages=SimpleNamespace(batches=_FakeBatches(list(results))))
 
 
+def test_clean_summary_strips_leading_header_only():
+    assert ing._clean_summary("# Title Line\n\nThis notebook trains a CNN.") == "This notebook trains a CNN."
+
+
+def test_clean_summary_leaves_prose_untouched():
+    prose = "This notebook trains a CNN. It uses a 3x3 kernel."
+    assert ing._clean_summary(prose) == prose
+
+
+def test_clean_summary_never_eats_body():
+    # a '#' mid-prose (e.g. in code-ish content) is not a leading header — keep it
+    text = "This uses lr=1e-3. See section #2 for details."
+    assert ing._clean_summary(text) == text
+
+
+def test_clean_summary_strips_multiple_leading_headers():
+    assert ing._clean_summary("## A\n### B\n\nbody text here") == "body text here"
+
+
 def test_request_for_shape():
     req = ing._request_for(kaggle_id=42, entry=_ENTRY)
     assert req["custom_id"] == "nb_42"
