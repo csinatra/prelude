@@ -295,9 +295,18 @@ Design notes:
   freeform, stance-free pass (no schema, no `RETRIEVAL_STANCE`), so the only
   change from B2 is flat → staged retrieval — see the staged-pipeline tables
   above.
-- **C1 is a pilot condition:** 3–4 competitions, single seed, not the full
-  matrix. Built to run at full scale; the harness defaults to the pilot
-  subset.
+- **C1 is a pilot condition, and what it can claim is limited accordingly.**
+  It runs on 3–4 competitions at a single seed, not the full matrix. The code
+  is built to run at full scale and the harness simply defaults to the pilot
+  subset. The grid above isolates retrieval structure (B2 vs C1) and synthesis
+  structure (C1 vs C2) as separate variables *in principle*, but at one seed
+  C1 cannot statistically separate from either neighbor. This is a power
+  limitation, not a design flaw, and the claims are scoped to match it. The
+  powered contrast in v1 is **C2 vs B2**, which moves structured synthesis and
+  staged retrieval together against flat retrieval with freeform synthesis.
+  The C1 pilot is a *qualitative decomposition aid* that indicates which of
+  the two mechanisms is worth powering in v1.5. Any decomposition read off a
+  single seed is a hypothesis for the next round, not a result.
 - AIDE scaffold, agent model, and MLE-bench grading are held constant across
   all run conditions (A/B/C). This constancy is what makes the matched-A
   baseline valid and the B-vs-C contrast clean: the only manipulated variable
@@ -373,17 +382,48 @@ Design notes:
 
 ## Outcome metrics (defined in advance)
 
-**Primary:** Any-Medal rate (MLE-bench grading), mean ± one standard error
-across 3 seeds per competition. Acknowledged as low-powered at n≈3–5
-competitions (POC subset); treated as directional, not confirmatory — under
-the POC framing (see Roadmap) the mechanistic spec-judging carries the
-primary evidential weight and the MLE-bench delta is a conservative lower
-bound.
+**Primary:** Any-Medal rate (MLE-bench grading). Low-powered at n≈3–5
+competitions by design (POC subset), so it is treated as directional rather
+than confirmatory. Under the POC framing (see Roadmap) the mechanistic
+spec-judging carries the primary evidential weight and the MLE-bench delta is a
+conservative lower bound.
 
 **Secondary (higher resolution):**
 1. Leaderboard percentile of the final submission
 2. Valid-submission rate (fraction of runs producing a gradeable submission)
 3. Time-to-first-valid-submission (wall-clock within the AIDE run)
+
+**Analysis plan (pre-registered 2026-08-07, before any eval run).** The primary
+comparison is **paired per competition**. For each eval competition, C2 and B2
+(and likewise each adjacent grid step) are compared on that same competition,
+and the per-competition deltas are aggregated. Between-competition variance on
+MLE-bench is far larger than the effect under test, so an unpaired comparison at
+this n would be unreadable whatever the true effect.
+
+- *Estimator.* For competition `c`, `delta_c` is the C2 metric minus the B2
+  metric on `c`, averaged over seeds within that competition. The reported
+  effect is the mean paired delta across competitions.
+- *Interval.* Bootstrap over the paired per-competition deltas, resampling
+  competitions and seeds within competition, and report a 90% interval. The
+  choice of 90% rather than 95% is a deliberate POC decision stated in advance.
+  At n=3–5 a 95% interval is nearly certain to span zero and would carry no
+  information either way.
+- *Direction summary.* The fraction of competition-seed pairs where C2 beats
+  B2, reported beside the interval. This is a sign-test-style readout that does
+  not depend on where a run happens to fall relative to a medal threshold.
+- *Separation criterion for H1.* H1 is supported if the mean paired delta is
+  positive, the 90% bootstrap interval excludes zero, and the direction summary
+  exceeds one half. If any of the three fails, H1 is not supported at POC
+  scale. This is explicitly a directional criterion at this n. It is committed
+  in advance so that "beyond seed noise" in the hypothesis statement has a
+  fixed operational meaning rather than one selected after seeing results.
+- *Secondary metrics.* Analyzed the same paired way, with the same interval and
+  direction summary.
+- *Pinning.* The eval competition subset and the seed list are recorded in
+  DECISIONS.md before the first eval run.
+
+Implemented in `analysis/stats.py` (paired deltas, bootstrap interval,
+direction summary), unit-tested against synthetic fixtures.
 
 **Cost/efficiency accounting (added 2026-07-17, pre-run):** every run
 carries a two-sided ledger linking upfront specification cost to downstream
@@ -423,66 +463,161 @@ contribution, and retrieval-grounded fraction (non-empty
 
 ## Threats to validity
 
-- **Construct validity (acknowledged, central):** Kaggle competitions are
-  *pre-specified by construction* — task, metric, and data are given, which
-  limits the available specification-failure signal that Prelude is designed
-  to catch in production settings. Mitigation: competition selection favors
-  Lite competitions with known data quirks (leakage paths, temporal
-  structure, measurement gaps). A synthetic-corruption arm (deliberately
-  under-specified task descriptions) is named as future work, not current
-  scope. Consequently, any effect measured here is interpreted as a
-  conservative lower bound on the expected improvement in the
-  ambiguously-specified real-world settings Prelude targets: the framing
-  portion of the C2 specification largely restates what Kaggle already
-  makes explicit, so the measurable signal is confined to flags and
-  recommendations.
-- **Budget/attention confounds:** document budgets are parity-matched; token
-  counts of injected artifacts are logged per run and reported, split into
-  retrieved-block vs synthesis-artifact tokens so "more retrieved knowledge"
-  is distinguishable from "structured restatement of the same knowledge."
-  *Similarity threshold evaluated and rejected pre-run (2026-07-15):* a
-  10-competition calibration sweep (`analysis/calibration.py`,
-  `results/calibration/`) showed the stage-directed queries score ~0.06
-  lower than the flat query against the identical chunk collection (short
-  keyword queries vs full-description queries — query impoverishment, not a
-  text/code modality gap), so any global cutoff filters the staged
-  conditions roughly twice as hard as flat retrieval and breaks knowledge
-  parity. `SIMILARITY_THRESHOLD=None` for v1: budgets bound quantity,
-  top-k rank ordering supplies quality control. Revisit triggers: evidence
-  of junk retrievals in run inspection (then: tail-relevance judging, and
-  per-kind quantile floors derived by a uniform documented rule), or corpus
-  expansion (re-run the sweep — thresholds are corpus-relative). External
-  corroboration for bounding quantity: DS-Agent's own hyperparameter sweep
-  found retrieval performance *declines* past a single retrieved case (their
-  Figure 6b) — independent evidence that naive volume increases can actively
-  hurt, not merely fail to help. This supports, but is not the sole
-  justification for, the existing fixed-k design (the parity and
-  query-impoverishment arguments above stand on their own).
+- **Construct validity (acknowledged, central, structural).** MLE-bench
+  competitions are pre-specified by construction. Task, metric, and data are
+  all given, so the specification-failure signal Prelude targets in production
+  settings is largely absent. This is a boundary of the chosen evaluation
+  substrate, not a gap in coverage that more or better runs would close.
+  - *Why it is structural.* Automated grading presupposes a single correct
+    answer to grade against. That presupposition bounds what any
+    automatically-graded benchmark can represent to **epistemic ambiguity**,
+    where a determinate specification exists but is under-disclosed and is
+    therefore recoverable in principle by a sufficiently careful reasoner. It
+    cannot represent **constitutive ambiguity**, where a problem is genuinely
+    underdetermined and several framings are legitimately defensible. The
+    project's broader motivation is about the constitutive case.
+  - *Why corrupting the inputs would not fix it.* Degrading a competition
+    description yields a harder epistemic-recovery task, not a constitutively
+    ambiguous one, because the hidden ground truth still sits in the grader.
+    The limit lives in the grading mechanism rather than in the input text. A
+    synthetic-corruption arm was considered and rejected on this basis
+    (DECISIONS.md, 2026-08-07).
+  - *Mitigation within the epistemic case.* Competition selection favors Lite
+    competitions with known data quirks such as leakage paths, temporal
+    structure, and measurement gaps.
+  - *Interpretation.* Any effect measured here is a conservative lower bound
+    for ambiguously-specified real-world settings **of the epistemic kind**.
+    C2's framing stage largely restates what the competition already makes
+    explicit, so the measurable signal concentrates in flags and
+    recommendations. The lower-bound reading does not extend to the
+    constitutive case, which this design cannot observe at all. The
+    qualitative case study in the roadmap is the only planned component that
+    reaches past this boundary, and it does so without quantitative grading.
+- **Budget/attention confounds.** Document budgets are parity-matched on
+  distinct documents, and injected-artifact token counts are logged per run
+  and reported, split into retrieved-block and synthesis-artifact tokens, so
+  "more retrieved knowledge" stays distinguishable from "structured
+  restatement of the same knowledge."
+  - *Similarity threshold: open, pending re-calibration.* `SIMILARITY_THRESHOLD`
+    is `None` in the current code, so budgets bound quantity and top-k rank
+    ordering supplies quality control. This value is **not yet settled for
+    eval runs.** The 2026-07-15 sweep that originally justified it
+    (`analysis/calibration.py`, `results/calibration/`) was run against the
+    retired code-chunk corpus under `voyage-code-3`. Both the retrieval
+    representation and the embedding model changed on 2026-08-03, and
+    thresholds are corpus-relative, so that result no longer transfers. The
+    sweep must be re-run on the rebuilt summary corpus before the first eval
+    run, and the outcome recorded as a dated pre-run decision.
+  - *What the earlier sweep found, as prior context.* Stage-directed queries
+    scored about 0.06 lower than the flat query against the identical
+    collection, attributed to query impoverishment (short keyword queries
+    against full-description queries) rather than a text/code modality gap.
+    If that asymmetry reappears on the summary corpus, a global cutoff would
+    again filter the staged conditions harder than flat retrieval and break
+    knowledge parity, which is the specific failure mode the re-run needs to
+    check for.
+  - *Revisit triggers.* Evidence of junk retrievals in run inspection, for
+    which `analysis/retrieval_audit.py` is the pre-run firing mechanism, then
+    tail-relevance judging and per-kind quantile floors derived by a uniform
+    documented rule. Corpus expansion triggers a re-run for the same
+    corpus-relative reason.
+  - *External corroboration for bounding quantity.* DS-Agent's hyperparameter
+    sweep found retrieval performance *declining* past a single retrieved case
+    (their Figure 6b), independent evidence that naive volume increases can
+    actively hurt rather than merely fail to help. This supports the fixed-k
+    design without being its sole justification, since the parity and
+    query-impoverishment arguments stand on their own.
 - **Judge circularity:** rubric frozen pre-run; judge blinded to outcomes;
   evidence quotes required.
 - **Corpus coverage asymmetry:** 18/22 Lite competitions have practitioner
   notebooks; retrieved-doc counts are reported per competition per
   condition as descriptive statistics.
-- **Low n:** primary metric is directional; secondary metrics and
-  mechanistic analysis carry the evidential weight.
+- **POC scale (consolidated).** Several limitations follow from running small.
+  They are collected here rather than scattered across the document. None is a
+  flaw in the design; each one bounds what the v1 result can claim.
+  - *Competitions.* 3–5 eval competitions, pinned pre-run in DECISIONS.md.
+    Between-competition variance on MLE-bench is large, which is why the
+    pre-registered primary analysis is paired per competition (see Outcome
+    metrics).
+  - *Seeds.* 3 seeds per condition, below AIRA-dojo's recommended count for
+    stable agent-benchmark estimates. Pairing removes between-competition
+    variance from the comparison but does not remove within-competition seed
+    variance.
+  - *C1.* Single seed across 3–4 competitions, so the B2/C1/C2 decomposition
+    is qualitative rather than an isolation result (see the C1 pilot note
+    under experimental design).
+  - *Consequence.* The primary MLE-bench metric is directional. Secondary
+    metrics and the mechanistic judging carry the evidential weight, and the
+    separation criterion in Outcome metrics exists so that "beyond seed noise"
+    is adjudicated by a rule committed in advance rather than chosen after
+    seeing results.
+  - *Why not simply run more.* Scope is bounded by budget, not by a judgment
+    that this n is scientifically correct. The Roadmap records the reasoning
+    and the pre-costed expansion path.
 
 ## Roadmap
 
-**v1 (this design, POC scope — 2026-07-22):** B1/B2/C1-pilot/C2 on a small
-subset (3–5) of Lite-22 (specific competitions pinned pre-run), 3 seeds (1
-for C1 pilot), mechanistic judging, writeup. Scope rationale: as a solo POC
-the goal is a rigorous, honest end-to-end run — not a fully-powered result.
-The mechanistic spec-quality judging is the primary informative signal (it
-measures specification quality directly); the MLE-bench score delta is a
-conservative secondary lower bound. Kaggle's pre-specified tasks structurally
-disadvantage the mechanism (Threats → construct validity), so MLE-bench is
-chosen for objective grading, not representativeness, and a small subset is
-adequate. Full Lite-22 with a disjoint wider-mle-bench smoke competition is
-the natural v1.5 if an initial result is pursued.
+**v1 (this design, POC scope, 2026-07-22).** B1/B2/C1-pilot/C2 on a small
+subset (3–5) of Lite-22 with the specific competitions pinned pre-run, 3 seeds
+(1 for the C1 pilot), mechanistic judging, writeup. As a solo POC the goal is a
+rigorous, honest end-to-end run rather than a fully-powered result. The
+mechanistic spec-quality judging is the primary informative signal because it
+measures specification quality directly, and the MLE-bench score delta is a
+conservative secondary lower bound. MLE-bench is chosen for objective grading
+rather than representativeness (Threats, construct validity), so a small subset
+is adequate.
 
-**v2 (explicitly out of scope):** MLE-Dojo / interactive specification
-reasoning; iteration depth as an experimental variable; real
-organizational-corpus case study; synthetic-corruption arm.
+*Why scope stops here (added 2026-08-07).* The 3–5 competition subset is a
+budget decision, not a judgment that this is the scientifically correct n. Full
+Lite-22 (~94 runs), full Code4ML, and MLEModernizer are all already planned and
+costed in COST_ESTIMATE.md, and scaling remains available if this becomes a
+fuller research effort. At the current stage marginal budget is better spent on
+judge validation and the pre-registered analysis plan than on more
+competitions. Additional runs under this design buy statistical power on a
+comparison that is already conceptually sound, and address none of the
+structural issues named in the threats section. Revisit deliberately if the
+budget picture changes.
+
+**v1.5 (if an initial result is pursued).** Full Lite-22 with a disjoint
+wider-mle-bench smoke competition. Powering the C1 contrast belongs here (see
+the C1 pilot note under experimental design), along with a seed count at or
+above AIRA-dojo's reliability floor.
+
+**Planned additions, not in v1 scope.**
+
+- *Seed-count sensitivity note.* Fold AIRA-dojo's findings on seed variance and
+  on the AIDE validation/test generalization gap into the limitations section.
+  Three seeds sits below their recommended count; the paired analysis in the
+  outcome-metrics section partially compensates.
+- *Second-judge reliability check.* Re-judge the human-validation sample with a
+  different model family and report inter-model agreement beside the human
+  agreement in `docs/JUDGE_VALIDATION.md`. Human agreement anchors the judge to
+  an outside reference; model-to-model agreement separates rubric ambiguity
+  from single-model idiosyncrasy. Lower priority than the human anchor, and it
+  carries API cost, so it sits behind the v1 writeup.
+- *`prelude spec` CLI entry point.* One documented command taking a problem
+  statement plus a corpus path and emitting `spec.md`, turning the research
+  artifact into something another person can run on their own problem. No new
+  research scope.
+- *Real-world case study.* Run the pipeline on one genuinely ambiguous problem
+  statement, written from memory of production work and de-identified, as a
+  qualitative appendix. This is the only planned component that reaches past
+  the constitutive-ambiguity boundary described under construct validity,
+  because there is no submission format to grade against and therefore no
+  structural requirement that a single correct answer exist. It is an existence
+  proof of applicability rather than a substitute for the quantitative results,
+  and the writeup should say so.
+- *MLE-Dojo HumanRank as a supplementary continuous outcome.* HumanRank scores
+  a submission continuously against the human leaderboard distribution instead
+  of against discrete medal thresholds. At POC n the binary medal rate discards
+  most of the available resolution and is sensitive to where a run happens to
+  fall relative to a cutoff, so a continuous measure would likely read more
+  cleanly. Deferred because it means adopting a second benchmark's scoring
+  convention and mapping our MLE-bench runs onto it, which is added surface
+  area for a secondary metric.
+
+**v2 (explicitly out of scope).** MLE-Dojo / interactive specification
+reasoning; iteration depth as an experimental variable.
 
 ## Amendments
 
