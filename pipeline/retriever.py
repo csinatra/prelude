@@ -9,6 +9,8 @@ SIMILARITY_THRESHOLD is unset by default — to be calibrated against the real
 corpus before eval runs (see implementation brief).
 """
 
+import logging
+
 import chromadb
 from chromadb.api.models.Collection import Collection
 from langsmith import traceable
@@ -17,7 +19,38 @@ from pydantic import BaseModel
 from pipeline.config import CHROMA_PATH, SIMILARITY_THRESHOLD
 from pipeline.embeddings import embed
 
+logger = logging.getLogger("pipeline.retriever")
+
 _client: chromadb.ClientAPI | None = None
+
+# Process-local ledger of distinct-document shortfalls, drained per run by
+# harness.runner into the run artifact (same pattern as llm_client's usage log).
+# A shortfall means a staged retrieval could not contribute its full k NEW
+# distinct docs, so the parity invariant is not met for that run and the
+# analysis must know. Kept out of stdout-only logging for exactly that reason.
+_shortfall_log: list[dict] = []
+
+
+def reset_shortfalls() -> None:
+    _shortfall_log.clear()
+
+
+def shortfall_log() -> list[dict]:
+    """Recorded parity shortfalls since the last reset, in call order."""
+    return list(_shortfall_log)
+
+
+def _record_shortfall(*, shortfall: dict) -> None:
+    _shortfall_log.append(shortfall)
+    logger.warning(
+        "retrieval parity shortfall: %s contributed %d/%d new distinct docs "
+        "(pool=%d, repeats=%d)",
+        shortfall["collection"],
+        shortfall["actual_distinct"],
+        shortfall["requested_distinct"],
+        shortfall["pool_size"],
+        shortfall["repeats_in_primary"],
+    )
 
 
 class RetrievedDoc(BaseModel):
@@ -111,6 +144,23 @@ def retrieve_with_topup(
         if doc.doc_id not in seen and doc.doc_id not in primary_ids:
             topups.append(doc)
     context = primary + topups
+    new_distinct = len({doc.doc_id for doc in context} - seen)
     for doc in context:
         seen.add(doc.doc_id)
+    if new_distinct < k:
+        # Parity depends on every stage contributing k NEW distinct docs. A small
+        # or heavily-overlapping corpus slice can exhaust the unseen pool, and a
+        # silent shortfall would degrade parity without leaving a trace in the
+        # run record. Record it rather than papering over it: the run stays
+        # valid, but the analysis needs to know the budget was not met.
+        _record_shortfall(
+            shortfall={
+                "collection": collection,
+                "requested_distinct": k,
+                "actual_distinct": new_distinct,
+                "pool_size": len(pool),
+                "repeats_in_primary": repeats,
+                "query": query[:200],
+            }
+        )
     return context

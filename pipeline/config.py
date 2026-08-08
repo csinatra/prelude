@@ -40,6 +40,38 @@ STAGE_N_NOTEBOOKS = 8  # distinct notebook-summary docs contributed per directed
 METADATA_K = 5  # parity with the parse stage
 BASELINE_N_NOTEBOOKS = 24  # parity: == 3 staged stages x STAGE_N_NOTEBOOKS distinct summaries
 
+
+def validate_parity() -> None:
+    """Fail loudly if the document-budget parity invariant has been broken.
+
+    Parity is a research-validity invariant of the experimental design: Condition
+    B and the staged conditions must reason over the same number of distinct
+    notebook-summary documents, plus equal metadata (docs/RESEARCH_DESIGN.md,
+    design notes on document budgets). It previously lived only in prose, so a
+    mis-edit to any budget here would have silently invalidated every
+    cross-condition comparison in a run rather than failing.
+
+    Run at import (below) rather than from each condition entry point, so there
+    is no call site to forget and a bad edit fails at the earliest moment.
+    """
+    if BASELINE_N_NOTEBOOKS != 3 * STAGE_N_NOTEBOOKS:
+        raise ValueError(
+            f"document-budget parity broken: BASELINE_N_NOTEBOOKS ({BASELINE_N_NOTEBOOKS}) "
+            f"!= 3 x STAGE_N_NOTEBOOKS ({STAGE_N_NOTEBOOKS}). Condition B and the staged "
+            "conditions would reason over different distinct-document budgets, which "
+            "invalidates the flat-vs-staged comparison (docs/RESEARCH_DESIGN.md, "
+            "design notes on document budgets)."
+        )
+    if METADATA_K != RETRIEVAL_K:
+        raise ValueError(
+            f"metadata parity broken: METADATA_K ({METADATA_K}) != RETRIEVAL_K "
+            f"({RETRIEVAL_K}). B's flat metadata pass and C's parse stage would see "
+            "different budgets (docs/RESEARCH_DESIGN.md, design notes on document budgets)."
+        )
+
+
+validate_parity()
+
 # ── Retrieval quality ───────────────────────────────────────────────
 # Deliberately unset by default — calibrate against the real corpus before
 # eval runs (observed good-match similarities: ~0.48-0.66; sweep ~0.45-0.70).

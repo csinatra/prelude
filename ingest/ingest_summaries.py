@@ -267,10 +267,35 @@ def _collect(*, batch_ids: list[str], client: anthropic.Anthropic, notebooks: di
     print(f"collected {collected} summaries")
 
 
+def _check_resume_matches(*, state: dict, notebooks: dict[int, dict]) -> None:
+    """Refuse to collect a batch that was generated against a different corpus.
+
+    The state file guards against double submission, but not against the corpus
+    changing underneath an in-flight batch. If the notebook set was rebuilt or
+    re-sliced between submit and resume (a --rebuild, an ingest config change),
+    the returned summaries describe notebooks that may no longer exist, and
+    upserting them would silently mix generations. Stop instead.
+    """
+    submitted = set(state.get("custom_ids", []))
+    if not submitted:
+        return  # state written before this check existed; nothing to verify against
+    available = {f"nb_{kaggle_id}" for kaggle_id in notebooks}
+    missing = submitted - available
+    if missing:
+        raise SystemExit(
+            f"batch state mismatch: {len(missing)} of {len(submitted)} submitted notebooks "
+            f"are no longer in the loaded slice (e.g. {sorted(missing)[:3]}). The corpus "
+            "changed after submission, so collecting would mix generations. Resolve by "
+            f"deleting {BATCH_STATE_PATH} to abandon the in-flight batch, then re-run."
+        )
+
+
 def _run_batch(*, notebooks: dict[int, dict], collection, limit: int | None) -> None:
     client = anthropic.Anthropic()
     if BATCH_STATE_PATH.exists():
-        batch_ids = json.loads(BATCH_STATE_PATH.read_text())["batch_ids"]
+        state = json.loads(BATCH_STATE_PATH.read_text())
+        _check_resume_matches(state=state, notebooks=notebooks)
+        batch_ids = state["batch_ids"]
         print(f"resuming: collecting {len(batch_ids)} in-flight batch(es)")
     else:
         pending = _pending(notebooks=notebooks, collection=collection, limit=limit)
@@ -279,7 +304,14 @@ def _run_batch(*, notebooks: dict[int, dict], collection, limit: int | None) -> 
             return
         batch_ids = _submit(pending=pending, client=client)
         BATCH_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        BATCH_STATE_PATH.write_text(json.dumps({"batch_ids": batch_ids}))
+        BATCH_STATE_PATH.write_text(
+            json.dumps(
+                {
+                    "batch_ids": batch_ids,
+                    "custom_ids": [f"nb_{kaggle_id}" for kaggle_id in pending],
+                }
+            )
+        )
     _collect(batch_ids=batch_ids, client=client, notebooks=notebooks, collection=collection)
     BATCH_STATE_PATH.unlink(missing_ok=True)
 
