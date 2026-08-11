@@ -1,8 +1,7 @@
 # Decision log
 
-Index of key project decisions — audit trail for the writeup. One line per
-decision; full rationale lives at the pointer (single source of truth, no
-duplication). Append new decisions with a date; never rewrite past entries.
+Dated index of key project decisions, with pointers to where each one is
+implemented or argued in full. The audit trail for the writeup.
 
 | Date | Decision | Recorded in |
 |---|---|---|
@@ -43,3 +42,4 @@ duplication). Append new decisions with a date; never rewrite past entries.
 | 2026-08-07 | Statistical analysis plan pre-registered: paired per-competition deltas, 90% percentile bootstrap, sign-test direction summary, and a three-part separation criterion for H1 | RESEARCH_DESIGN.md outcome metrics → analysis plan; analysis/stats.py |
 | 2026-08-07 | C1 pilot reframed as a qualitative decomposition aid, not an isolation result; the powered v1 contrast is C2 vs B2 | RESEARCH_DESIGN.md experimental design → C1 pilot note |
 | 2026-08-07 | Human-anchored judge validation added: blinded stratified sample of judged flags labeled against the frozen rubric, reported as percent agreement + Cohen's kappa with pre-committed interpretation bands, run BEFORE the mechanistic writeup. Judge model + rubric/prompt SHA-256 now recorded per run | docs/JUDGE_VALIDATION.md; analysis/judge_agreement.py; analysis/judge.py::judge_provenance |
+| 2026-08-11 | Spec generation stays LOCAL, reversing the 2026-07-24 all-cloud decision. The handoff is small text files (spec.md plus append-only registry rows), so the rsync friction that motivated the move is minor, and that sync step doubles as the treatment-freeze point: specs are generated and inspected in one batch, committed, then run, which is the discipline the experiment wants anyway. Keeping spec-gen local also leaves LangSmith tracing on the machine holding the quota, avoids GPU idle during spec builds, and removes the need to host the corpus on the cloud volume. All-cloud's remaining benefit was one-machine operational simplicity for hands-off drains, which is modest at POC scale. Revisit if the corpus grows enough that shipping it to the box is cheaper than generating specs locally | harness/runner.py; harness/batch.py; docs/RUNBOOK.md two-machine split |

@@ -9,10 +9,12 @@ A research POC for an Anthropic Fellows Program application. The deliverable
 is **evidence for a research claim**, not a production system. Optimize for
 clarity, traceable experiments, and reproducibility over polish.
 
-**Claim under test:** structured reasoning over retrieved organizational
-knowledge improves ML problem specification — and downstream agent
-performance on MLE-bench — *beyond* what unstructured knowledge provision
-(AssistedDS) achieves.
+**Claim under test:** directed retrieval and structured reasoning over
+retrieved **practitioner knowledge** improves ML problem specification, and the
+downstream agent performance it drives on MLE-bench, beyond what unstructured
+knowledge retrieval (AssistedDS) achieves. The corpus is public practitioner
+notebooks, not organizational knowledge; institutional knowledge is the
+direction this generalizes toward, not what the POC retrieves from.
 
 See [README.md](README.md) for the three-condition eval design, the four
 pipeline stages, and prior art.
@@ -114,6 +116,21 @@ an explicit operator instruction in the current session:
 - Corpus ingest or re-ingest (any Chroma write: `ingest.*` modules)
 - Calibration sweeps (`analysis.calibration` — LLM calls per competition)
 - Anything that consumes LangSmith trace quota in bulk
+
+## Keeping the decision log
+
+`docs/DECISIONS.md` is the dated audit trail for the writeup. When a change
+affects the experimental design, the corpus, the run matrix, or anything a
+reviewer would want justified, append an entry the same day.
+
+- Keep an entry short where a line will do, with the full rationale at the
+  pointer. Extend it when the reasoning *is* the decision and would otherwise
+  live nowhere.
+- Append only. Never rewrite or delete a past entry, even a wrong one.
+- A reversed decision gets a **new dated entry recording the reversal and why**,
+  leaving the original in place. The change of mind is part of the record.
+- Pre-registration discipline: anything touching hypotheses, metrics, or the
+  analysis plan must be logged *before* eval runs, not after.
 
 ## Execution environments
 
@@ -273,11 +290,12 @@ end-to-end. History: [docs/PROGRESS.md](docs/PROGRESS.md).
 2. Re-run the `SIMILARITY_THRESHOLD` calibration before eval runs — thresholds
    are corpus-relative and both the retrieval representation (summary unit) and
    the embedding model changed (currently `None` for v1).
-3. Cloud-box harness: spec injection + a single-run smoke are verified
-   (2026-07-24). Remaining — exercise the automated batch drain end-to-end (the
-   grade-via-JSONL + journal-metric seams are unexercised on a real multi-run),
-   and complete the all-cloud spec-runner migration (decided, deferred —
-   DECISIONS.md 2026-07-24).
+3. Cloud-box harness: spec injection and a single-run smoke are verified
+   (2026-07-24). Remaining: exercise the automated batch drain end-to-end, since
+   the grade-via-JSONL and journal-metric seams are still unexercised on a real
+   multi-run. Spec generation stays local (DECISIONS.md 2026-08-11 reverses the
+   earlier all-cloud plan), so specs are built and inspected in one batch, then
+   synced to the box with the registry rows before draining.
 4. Corpus scale-up to full Code4ML via `ingest.ingest_summaries --batch` (built),
    then size MLEModernizer after opening the tarball on the cloud box (unit count
    + native-abstract check first). Re-calibrate after any expansion.
