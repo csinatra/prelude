@@ -179,12 +179,15 @@ Three networked containers in cloud evaluation:
 
 ```bash
 brew install uv
-uv venv --python 3.12
+uv sync --extra dev     # exact versions from uv.lock
 source .venv/bin/activate
-uv pip install langgraph langsmith anthropic python-dotenv pytest requests chromadb voyageai pandas
-cp .env.example .env   # then fill in: ANTHROPIC_API_KEY, VOYAGE_API_KEY,
-                       # LANGSMITH_API_KEY, LANGSMITH_TRACING_V2, LANGSMITH_PROJECT
+cp .env.example .env    # then fill in: ANTHROPIC_API_KEY, VOYAGE_API_KEY,
+                        # LANGSMITH_API_KEY, LANGSMITH_TRACING_V2, LANGSMITH_PROJECT
 ```
+
+Dependencies are declared in `pyproject.toml` and pinned in `uv.lock`. The
+lockfile is committed so a corpus build or an evaluation run can be reproduced
+against the exact package versions that produced it.
 
 For cloud-box provisioning and end-to-end experiment execution (spec
 builds → AIDE runs → grading → analysis), see
