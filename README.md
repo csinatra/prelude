@@ -79,42 +79,30 @@ All corpus access goes through two seams in `pipeline/retriever.py`, both
 enforcing leave-one-out, over a local ChromaDB store (`data/chroma/`,
 gitignored) embedded with Voyage `voyage-4-large`:
 
-- `retrieve()` — flat top-k retrieval. Used for `competition_metadata` (parse
-  stage) and, over `notebook_summaries`, for Condition B's single flat pass.
-- `retrieve_with_topup()` — the staged practitioner-knowledge unit for C1/C2:
-  each directed stage retrieves top-`STAGE_N` notebook summaries, retaining any
-  a prior stage already surfaced (re-selection is an importance signal) and
-  backfilling each such repeat with the next-best unseen summary, so every stage
-  contributes `STAGE_N` *distinct* documents. The retrieval unit — the notebook
-  **summary** — is held constant across conditions, so the flat-vs-staged
-  comparison isolates query structure, not retrieval granularity.
+- `retrieve()` for flat top-k, used by the parse stage and by Condition B's
+  single flat pass.
+- `retrieve_with_topup()` for the staged conditions, where each directed stage
+  contributes `STAGE_N` *distinct* summaries. Repeats across stages are retained
+  as an importance signal and each one is backfilled with the next-best unseen
+  summary.
 
-Budgets are parity-matched knobs in `pipeline/config.py`: B and C reason over the
-same number of **distinct** notebook summaries (`BASELINE_N_NOTEBOOKS` =
-3 × `STAGE_N_NOTEBOOKS`).
-
-Two collections:
+The retrieval unit is the notebook **summary**, held constant across conditions
+so the flat-vs-staged comparison isolates query structure rather than retrieval
+granularity. Budgets are parity-matched in `pipeline/config.py`, so B and C
+reason over the same number of distinct documents.
 
 | Collection | Contents | Queried by |
 |---|---|---|
-| `competition_metadata` | Code4ML `competitions.csv` + mle-bench `description.md` (Lite-22) — 1,005 chunks across 947 competitions | parse (C1/C2), B flat |
-| `notebook_summaries` | one LLM abstract per unique notebook — the retrieval unit for all practitioner-knowledge access | B flat pass; C1/C2 directed stages |
+| `competition_metadata` | Code4ML `competitions.csv` plus mle-bench `description.md` (Lite-22), 1,005 chunks across 947 competitions | parse (C1/C2), B flat |
+| `notebook_summaries` | one LLM abstract per unique notebook, the retrieval unit for all practitioner-knowledge access | B flat pass; C1/C2 directed stages |
 
-**Leave-one-out:** every retrieval carries
-`{"competition_id": {"$ne": current_competition_id}}`, enforced inside
-`pipeline/retriever.py` — the pipeline can never see the evaluated
-competition's own artifacts. Code4ML covers 18 of the Lite-22; the other 4
-have descriptions only (from mle-bench). Under leave-one-out this doesn't
-change eval validity — every competition retrieves only from *other*
-competitions — but the 18 covered ones are the test cases where the filter
-does real work.
+Every retrieval carries `{"competition_id": {"$ne": current_competition_id}}`,
+so the pipeline can never see the evaluated competition's own artifacts. The
+full treatment of corpus construction, the 18-of-22 coverage asymmetry, and the
+open similarity-threshold decision is in
+[RESEARCH_DESIGN.md](docs/RESEARCH_DESIGN.md#corpus-construction).
 
-**Note on sources:** the implementation brief's Source 1 (MLEModernizer,
-zenodo 15022707) ships as a single 107 GB tar.gz and is deferred to the cloud
-box. Code4ML's code-block CSVs (~1.4 GB) fill the practitioner-knowledge role
-for the dev corpus.
-
-Build the corpus (dev subset — Lite-22 code blocks only):
+Build the corpus (dev subset, Lite-22 only):
 
 ```bash
 python -m ingest.download           # Code4ML CSVs (~1.4 GB) + mle-bench descriptions
@@ -122,15 +110,11 @@ python -m ingest.ingest_metadata    # → competition_metadata collection
 python -m ingest.ingest_summaries   # → notebook_summaries (one LLM abstract per notebook; resumable)
 ```
 
-Pass `--rebuild` to `ingest_metadata` / `ingest_summaries` to drop and rebuild a
-collection from scratch — required after an embedding-model or summary-prompt
-change (skip-existing resumability would otherwise leave stale records in place).
-For the full-corpus summary run, add `--batch` to `ingest_summaries` (Anthropic
-Message Batches API, 50% discount, async with resume-on-interrupt).
-
-The similarity threshold (`SIMILARITY_THRESHOLD` env var) is deliberately
-unset — to be calibrated against the real corpus on 5–10 dev competitions
-before eval runs.
+`--rebuild` drops and rebuilds a collection, which is required after an
+embedding-model or summary-prompt change since skip-existing resumability would
+otherwise leave stale records in place. For the full-corpus run, `--batch` on
+`ingest_summaries` uses the Anthropic Message Batches API (50% discount, async,
+resumes after interruption).
 
 ## Related work
 
@@ -140,8 +124,10 @@ before eval runs.
 - **DS-Agent** (Guo et al., ICML 2024) — closest prior art; CBR over retrieved Kaggle solutions, iteratively revised against execution feedback (Prelude builds its spec once, upfront).
 - **MLE-Dojo** (Qiang et al., 2025) — Gym-style benchmark/training environment over 200+ Kaggle competitions; scope contrast, not competing (doesn't study the agent's starting specification).
 - **Yang et al. 2023**, "LLMs as Optimizers" — conceptual foundation.
+- **Co-Scientist** (Gottweis et al., *Nature*, 2026; Google DeepMind) — independent convergence in an adjacent domain, not prior art; a shared premise that problem formation deserves a structured phase, not a shared architecture.
 
-- **Co-Scientist** (Gottweis et al., *Nature*, 2026; Google DeepMind) — *independent convergence, adjacent domain (not prior art).* A multi-agent system for scientific hypothesis generation, validated in wet-lab work, that independently reflects Prelude's core premise: problem understanding and hypothesis formation deserve a structured phase before the solution phase. A shared premise, not a shared architecture.
+Full positioning, including what each work does and does not address, is in
+[RESEARCH_DESIGN.md](docs/RESEARCH_DESIGN.md#related-work-positioning).
 
 ## Stack
 
