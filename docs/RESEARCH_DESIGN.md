@@ -583,6 +583,28 @@ wider-mle-bench smoke competition. Powering the C1 contrast belongs here (see
 the C1 pilot note under experimental design), along with a seed count at or
 above AIRA-dojo's reliability floor.
 
+*Deeper mechanistic evaluation (v1.5).* v1 establishes whether C2 separates
+from B2 and, through the judge, whether flags are acted on. It does not
+establish **why**. These arms attack that, and each costs at least one more
+condition across the eval subset, so they wait for a v1 result worth
+decomposing.
+
+- *Negative-control spec arm.* Inject a plausible but irrelevant specification,
+  for example another competition's C2 output, holding format and length
+  constant. This separates "this structure carries useful content" from "any
+  confident-looking scaffold improves agent behavior," which the current grid
+  cannot distinguish, since every treatment arm receives a spec that is *about*
+  its own competition. A null result here would be the strongest single piece of
+  evidence that the content rather than the framing is doing the work.
+- *Stage ablations.* Remove one C2 stage at a time (flags, recommendations,
+  surfaced signals) to locate where the effect concentrates, rather than
+  inferring it from the judge's per-category aggregation alone.
+- *Stance ablation.* C2 with the structured schemas but without
+  `RETRIEVAL_STANCE`, isolating critical integration from decomposition. These
+  are currently bundled in the single C1-to-C2 step.
+- *Second-judge reliability check* (see below), which belongs to this cluster
+  even though it costs less than the arms above.
+
 **Planned additions, not in v1 scope.**
 
 - *Seed-count sensitivity note.* Fold AIRA-dojo's findings on seed variance and

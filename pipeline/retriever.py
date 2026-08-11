@@ -5,8 +5,9 @@ LangSmith traces it. Leave-one-out is enforced here: every query excludes the
 competition currently being specified, so the pipeline can never see the
 held-out competition's own artifacts.
 
-SIMILARITY_THRESHOLD is unset by default — to be calibrated against the real
-corpus before eval runs (see implementation brief).
+SIMILARITY_THRESHOLD is unset by default and is read from config at call time,
+not bound at import. It is still to be calibrated against the rebuilt summary
+corpus before eval runs (docs/RESEARCH_DESIGN.md, budget/attention confounds).
 """
 
 import logging
@@ -16,10 +17,36 @@ from chromadb.api.models.Collection import Collection
 from langsmith import traceable
 from pydantic import BaseModel
 
-from pipeline.config import CHROMA_PATH, SIMILARITY_THRESHOLD
+from pipeline import config
+from pipeline.config import CHROMA_PATH
 from pipeline.embeddings import embed
 
 logger = logging.getLogger("pipeline.retriever")
+
+
+class _UseConfigThreshold:
+    """Sentinel meaning 'read SIMILARITY_THRESHOLD from config when called'.
+
+    The threshold cannot be bound as a default argument value: config resolves it
+    from the environment at import, so a default would freeze whichever value
+    existed when this module was first imported. An env change, or a test
+    monkeypatching config, would then leave config and the retriever disagreeing
+    about the effective threshold. Harmless while the value is None, but the
+    pending recalibration is expected to set it. None is unavailable as the
+    sentinel because callers pass it deliberately to mean "no filtering".
+    """
+
+
+_USE_CONFIG_THRESHOLD = _UseConfigThreshold()
+
+Threshold = float | None | _UseConfigThreshold
+
+
+def _resolve_threshold(score_threshold: Threshold) -> float | None:
+    if isinstance(score_threshold, _UseConfigThreshold):
+        return config.SIMILARITY_THRESHOLD
+    return score_threshold
+
 
 _client: chromadb.ClientAPI | None = None
 
@@ -76,9 +103,10 @@ def retrieve(
     collection: str,
     exclude_competition: str,
     k: int = 5,
-    score_threshold: float | None = SIMILARITY_THRESHOLD,
+    score_threshold: Threshold = _USE_CONFIG_THRESHOLD,
 ) -> list[RetrievedDoc]:
     """Top-k cosine retrieval with the leave-one-out competition filter applied."""
+    threshold = _resolve_threshold(score_threshold)
     query_vector = embed(texts=[query], input_type="query")[0]
     result = _get_collection(name=collection).query(
         query_embeddings=[query_vector],
@@ -91,7 +119,7 @@ def retrieve(
         result["ids"][0], result["documents"][0], result["metadatas"][0], result["distances"][0]
     ):
         similarity = 1.0 - distance  # cosine distance -> similarity
-        if score_threshold is not None and similarity < score_threshold:
+        if threshold is not None and similarity < threshold:
             continue
         docs.append(
             RetrievedDoc(
@@ -114,7 +142,7 @@ def retrieve_with_topup(
     exclude_competition: str,
     k: int,
     seen: set[str],
-    score_threshold: float | None = SIMILARITY_THRESHOLD,
+    score_threshold: Threshold = _USE_CONFIG_THRESHOLD,
 ) -> list[RetrievedDoc]:
     """Directed retrieval with cross-stage top-up for distinct-document parity.
 
