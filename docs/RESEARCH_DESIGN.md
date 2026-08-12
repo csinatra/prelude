@@ -19,10 +19,37 @@ baseline (A); that comparison is invalid because the published AIDE runs
 used gpt-4o-2024-08-06, not our agent model — see the Condition A note
 under the experimental design.)*
 
-**Secondary hypothesis (H2, mechanistic):** C2's advantage, if any, is
-mediated by specification flags being acted on — flag categories with higher
-action rates (per the frozen judge rubric) contribute disproportionately to
-outcome differences.
+**Secondary hypothesis (H2, mechanistic, within-C2):** C2's specification flags
+are acted on by the agent at rates that vary systematically by flag category, and
+flags recorded as acted on are associated with better outcomes than flags
+recorded as not acted on.
+
+*Scope limit (added 2026-08-11, pre-run).* This is a within-C2 claim, not a
+mediation claim about the C2-versus-B2 difference. Specification flags exist only
+in C2, so the frozen rubric produces no comparable measure of whether B2's
+freeform advice was acted on. H2 can establish that C2's structured flags reach
+the agent's behavior; it cannot establish that they do so more reliably than
+B2's prose advice does. This is a limitation of the **instrument**, not of sample
+size: it would persist at full scale unless a B-side measure is added, which is
+roadmapped rather than in v1 scope.
+
+### What v1 establishes, and what it does not
+
+One distinction governs how every result below should be read. Some limits are
+**by design** and hold at any scale. Others exist only because the POC runs too
+few trials to support statistical conclusions, and a larger round removes them.
+
+v1 does not claim its results will be representative of the outcomes a full run
+would produce. It claims that the experiment functions as intended and produces
+the data needed to evaluate the research questions properly. Concretely: the full
+artifact chain runs end to end (specs, agent runs, gradings, judgments, a
+reproducible analysis), the invariants hold under real conditions (leave-one-out,
+document parity, blinded judging), and the outputs are the ones the hypotheses
+actually require.
+
+Threats to validity labels each limitation as structural or POC-scale for this
+reason. Conflating the two would either overstate what a bigger experiment fixes
+or understate what this design can support.
 
 *Corroborating prior evidence (suggestive, not validating):* DS-Agent's
 development-stage ablation found retrieval-augmented CBR beat its
@@ -393,6 +420,29 @@ conservative lower bound.
 2. Valid-submission rate (fraction of runs producing a gradeable submission)
 3. Time-to-first-valid-submission (wall-clock within the AIDE run)
 
+**Metric weight by scale.** Two questions are easy to conflate, so they are kept
+apart.
+
+*At design scale* (full Lite-22 or beyond), the intended architecture is:
+Any-Medal rate as the primary confirmatory outcome; the three higher-resolution
+metrics as supporting evidence that a medal-rate difference reflects capability
+rather than threshold luck; and the mechanistic judging as the explanatory layer.
+
+*At POC scale* (3–5 competitions, 3 seeds), none of that reaches statistical
+reliability, and the design does not claim otherwise. Fewer than ten
+competition-level trials cannot support a significance-style conclusion on any of
+these measures. What the POC yields substantively is directional: effect signs,
+effect sizes worth powering, and the mechanistic detail indicating which
+contrasts merit a larger round. See "What v1 establishes, and what it does not"
+above.
+
+**Multiplicity at POC scale.** With four outcome measures at this n, evaluating
+each against the separation criterion would inflate false positives past any
+nominal rate. Only the primary carries the pre-registered criterion. Secondary
+metrics use the same paired estimator and interval for description. A secondary
+metric that separates while the primary does not is a lead to power in the next
+round, not support for H1.
+
 **Analysis plan (pre-registered 2026-08-07, before any eval run).** The primary
 comparison is **paired per competition**. For each eval competition, C2 and B2
 (and likewise each adjacent grid step) are compared on that same competition,
@@ -527,14 +577,26 @@ contribution, and retrieval-grounded fraction (non-empty
     actively hurt rather than merely fail to help. This supports the fixed-k
     design without being its sole justification, since the parity and
     query-impoverishment arguments stand on their own.
-- **Judge circularity:** rubric frozen pre-run; judge blinded to outcomes;
-  evidence quotes required.
-- **Corpus coverage asymmetry:** 18/22 Lite competitions have practitioner
-  notebooks; retrieved-doc counts are reported per competition per
-  condition as descriptive statistics.
-- **POC scale (consolidated).** Several limitations follow from running small.
-  They are collected here rather than scattered across the document. None is a
-  flaw in the design; each one bounds what the v1 result can claim.
+- **Judge circularity (structural).** Rubric frozen pre-run, judge blinded to
+  outcomes, evidence quotes required. The chain is otherwise closed (an LLM
+  judging an LLM agent acting on an LLM-written spec over an LLM-summarized
+  corpus), so a human-anchored agreement check runs before the mechanistic
+  writeup (docs/JUDGE_VALIDATION.md). More runs do not address this; only an
+  outside reference does.
+- **H2 has no B-side measure (structural).** Flags exist only in C2, so the
+  frozen rubric cannot say whether B2's freeform advice was acted on. H2 is
+  scoped as a within-C2 claim for this reason (see the hypothesis). Persists at
+  any scale unless a B-side instrument is added.
+- **Corpus coverage asymmetry (partly structural, partly addressable).** 18/22
+  Lite competitions have practitioner notebooks, and retrieved-doc counts are
+  reported per competition per condition as descriptive statistics. The 2026-08-11
+  audit showed the practical effect: competitions with shallow near-neighbor pools
+  retrieve further down the ranking and pick up more low-substance documents.
+  Corpus expansion reduces this; it does not remove the reporting obligation.
+- **POC scale (consolidated, NOT structural).** Several limitations follow from
+  running small. They are collected here rather than scattered across the
+  document. None is a flaw in the design, and unlike the structural limits above,
+  each one dissolves in a larger round. Each bounds what the v1 result can claim.
   - *Competitions.* 3–5 eval competitions, pinned pre-run in DECISIONS.md.
     Between-competition variance on MLE-bench is large, which is why the
     pre-registered primary analysis is paired per competition (see Outcome
