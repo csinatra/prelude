@@ -1,7 +1,7 @@
 # Cost / Scope Tracking
 
 Update this file whenever conditions, competition count, or seed count change.
-Last updated: 2026-08-11 (batch-summary re-cost after the richer prompt;
+Last updated: 2026-08-11 (measured per-notebook batch rate;
 superseded code-chunk-era notes collapsed into History). No eval runs yet.
 
 ## Run matrix (POC scope — decided 2026-07-22)
@@ -40,16 +40,21 @@ if an initial result is pursued.
 
 ## One-time / infrastructure
 
-- **Dev-corpus summaries (Lite-22, 5,937 notebooks):** one pinned-Haiku call per
-  notebook, resumable. Actual on the original prompt (2026-07-15): **~\$20**.
-  The 2026-08-03 prompt is richer (60k-char input, up to 1024 output tokens), so
-  a rebuild runs somewhat higher.
-- **Full-Code4ML expansion (~110–115k remaining notebooks):** summary
-  *generation* is the real spend, not embedding. Via the Anthropic Batch API
-  (50% discount, same pinned `SUMMARY_MODEL`, no homogeneity impact) →
-  **~\$250–300** under the current prompt, revised up from the ~\$200 estimated
-  on 2026-07-15 against the shorter prompt. Embedding the resulting summaries
-  (~55–110M tokens) fits inside the free grant → **~\$0**.
+- **Measured per-notebook rate (2026-08-11, 50-notebook batch on the current
+  prompt):** avg 3,468 input and 506 output tokens → **\$0.0030/notebook** at
+  Haiku Batch rates. The richer prompt did *not* raise the rate much, because
+  the 60k-char input cap rarely binds: the median notebook is only ~5.4k chars,
+  so most inputs sit far below it.
+- **Dev-corpus summaries (Lite-22, 5,937 notebooks):** **~\$18** at the measured
+  rate, in line with the ~\$20 actual on the original prompt (2026-07-15).
+- **Full-Code4ML expansion (~101.6k remaining notebooks):** summary *generation*
+  is the real spend, not embedding. Via the Anthropic Batch API (50% discount,
+  same pinned `SUMMARY_MODEL`, no homogeneity impact) → **~\$305–325** at the
+  measured rate, allowing for full Code4ML's slightly larger mean notebook
+  (~9.2k chars against Lite-22's ~8.7k). Revised up from the ~\$200 estimated on
+  2026-07-15 and the ~\$250–300 projected on 2026-08-03, both of which predated
+  measurement. Embedding the resulting summaries (~55–110M tokens) fits inside
+  the free grant → **~\$0**.
 - **MLEModernizer:** ingestion is cloud-box disk and bandwidth, not API cost.
   Summary cost is **not** included above and stays unsized until the tarball is
   opened on the box. Each retrieval unit needs an abstract, so either its units
