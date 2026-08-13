@@ -9,7 +9,7 @@ runs begin must be dated and listed at the bottom.*
 agent performance on benchmark tasks beyond what unstructured knowledge
 provision achieves?
 
-**Falsifiable hypothesis (H1):** On MLE-bench Lite competitions, an AIDE
+**H1 (outcome):** On MLE-bench Lite competitions, an AIDE
 agent given Condition C2's structured specification will achieve a higher
 Any-Medal rate than the same agent given Condition B's unstructured context.
 H1 is falsified if C2 fails to separate from B beyond seed noise, or if
@@ -19,7 +19,7 @@ baseline (A); that comparison is invalid because the published AIDE runs
 used gpt-4o-2024-08-06, not our agent model — see the Condition A note
 under the experimental design.)*
 
-**Secondary hypothesis (H2, mechanistic, within-C2):** C2's specification flags
+**H2 (mechanism, within-C2):** C2's specification flags
 are acted on by the agent at rates that vary systematically by flag category, and
 flags recorded as acted on are associated with better outcomes than flags
 recorded as not acted on.
@@ -32,6 +32,17 @@ the agent's behavior; it cannot establish that they do so more reliably than
 B2's prose advice does. This is a limitation of the **instrument**, not of sample
 size: it would persist at full scale unless a B-side measure is added, which is
 roadmapped rather than in v1 scope.
+
+**H3 (efficiency, added 2026-08-13, pre-run):** Front-loading specification
+effort directs the agent's search, so conditioned runs converge faster than
+unconditioned ones. H3 concerns the *path* where H1 concerns the endpoint.
+Prelude does not replace the agent's iterative search, it initializes it, so what
+is tested is directed against undirected iteration, not upfront reasoning against
+iterative feedback. H3 is not supported if conditioned runs show no convergence
+advantage at matched step counts. A specification can plausibly slow a run, since
+it adds context to process and a wrong steer costs steps to recover from, so a
+negative result is informative about when front-loading fails rather than merely
+null. Measurement is defined under Outcome metrics.
 
 ### What v1 establishes, and what it does not
 
@@ -409,43 +420,80 @@ Design notes:
 
 ## Outcome metrics (defined in advance)
 
-**Primary:** Any-Medal rate (MLE-bench grading). Low-powered at n≈3–5
-competitions by design (POC subset), so it is treated as directional rather
-than confirmatory. Under the POC framing (see Roadmap) the mechanistic
-spec-judging carries the primary evidential weight and the MLE-bench delta is a
-conservative lower bound.
+Each measure is defined once, under the hypothesis it serves.
 
-**Secondary (higher resolution):**
-1. Leaderboard percentile of the final submission
-2. Valid-submission rate (fraction of runs producing a gradeable submission)
-3. Time-to-first-valid-submission (wall-clock within the AIDE run)
+**H1 (outcome).** What the agent finally achieved.
+- *Headline:* Any-Medal rate (MLE-bench grading). The MLE-bench delta is a
+  conservative lower bound, for the reasons under construct validity.
+- *Higher resolution:* leaderboard percentile of the final submission, and
+  valid-submission rate (fraction of runs producing a gradeable submission).
+  These carry more information per run than a binary medal and guard against a
+  medal difference that is really threshold luck.
+
+**H2 (mechanism).** Whether C2's flags reached the agent's behavior. Measured by
+per-flag judging against the frozen rubric, aggregated per category; see
+Mechanistic evaluation below for the instrument and Judge validation for the
+human anchor.
+
+**H3 (efficiency, added 2026-08-13, pre-run).** How fast the agent converged.
+Compared paired within competition, where both conditions run the same agent on
+the same data under the same metric and budget, so no normalization is needed.
+Aggregation across competitions uses a scale-free statistic:
+- *Headline:* for each (competition, seed) pair, the step at which the
+  conditioned run first reaches the unconditioned run's **final validation
+  score**, reported as `steps_to_match / steps_baseline_total`. Below 1 means
+  faster convergence. Direction-agnostic via the registry's `is_lower_better`.
+  Anchoring to the baseline's own final score avoids inventing a maximum, which
+  does not exist for unbounded metrics such as RMSE. Runs that never reach the
+  baseline score are not missing data; they are reported separately as a
+  matched-at-all rate.
+- *Supporting:* steps to first valid submission, with agent wall-clock and
+  time-to-first-valid-submission secondary. Steps lead because wall-clock varies
+  with data size, with whichever model the agent happens to try, and with GPU
+  contention, none of which reflect search efficiency.
+- *Cost, deliberately not the headline:* spec-build cost against agent cost is
+  reported but does not carry the claim. It depends on the model pair and on GPU
+  rental pricing, both environment-specific and liable to date, and the
+  step-based measures already capture the efficiency it proxies for.
+- *Validation, not test:* the per-step metric in AIDE's journal is the agent's
+  own validation score, since only the final submission is graded. H3 therefore
+  claims faster convergence **on validation**, which AIRA-dojo found can diverge
+  from test performance in AIDE. Whether faster validation convergence
+  corresponds to better final graded outcomes is checked across runs and reported
+  either way.
 
 **Metric weight by scale.** Two questions are easy to conflate, so they are kept
 apart.
 
-*At design scale* (full Lite-22 or beyond), the intended architecture is:
-Any-Medal rate as the primary confirmatory outcome; the three higher-resolution
-metrics as supporting evidence that a medal-rate difference reflects capability
-rather than threshold luck; and the mechanistic judging as the explanatory layer.
+*At design scale* (full Lite-22 or beyond), the intended architecture is
+Any-Medal rate as the confirmatory outcome, the higher-resolution measures as
+supporting evidence, the efficiency statistic as a separate claim about the
+search path, and the mechanistic judging as the explanatory layer.
 
 *At POC scale* (3–5 competitions, 3 seeds), none of that reaches statistical
-reliability, and the design does not claim otherwise. Fewer than ten
-competition-level trials cannot support a significance-style conclusion on any of
-these measures. What the POC yields substantively is directional: effect signs,
+reliability. Fewer than ten competition-level trials cannot support a
+significance-style conclusion on any of these measures, and under this framing
+the mechanistic evidence carries the most weight while the graded delta stays a
+conservative lower bound. What the POC yields is directional: effect signs,
 effect sizes worth powering, and the mechanistic detail indicating which
-contrasts merit a larger round. See "What v1 establishes, and what it does not"
-above.
+contrasts merit a larger round. See "What v1 establishes, and what it does not."
 
-**Multiplicity at POC scale.** With four outcome measures at this n, evaluating
-each against the separation criterion would inflate false positives past any
-nominal rate. Only the primary carries the pre-registered criterion. Secondary
-metrics use the same paired estimator and interval for description. A secondary
-metric that separates while the primary does not is a lead to power in the next
-round, not support for H1.
+**Multiplicity at POC scale.** Across the three hypotheses there are now several
+measures, and evaluating each against a separation criterion would inflate false
+positives past any nominal rate. Only H1's headline metric carries the
+pre-registered criterion below. Everything else uses the same paired estimator
+and interval for description. A supporting measure that separates while the
+headline does not is a lead to power in the next round, not support for the
+hypothesis. H3 mitigates this only partly: it is tested on different measures
+than H1 rather than being a second attempt at the same outcome, but it is still
+an additional comparison and is reported as such.
 
-**Analysis plan (pre-registered 2026-08-07, before any eval run).** The primary
-comparison is **paired per competition**. For each eval competition, C2 and B2
-(and likewise each adjacent grid step) are compared on that same competition,
+**Analysis plan (pre-registered 2026-08-07, before any eval run).** This applies
+to every measure above, across all three hypotheses. Only the separation
+criterion is hypothesis-specific, and it belongs to H1's headline metric alone.
+
+Every comparison is **paired per competition**. For each eval competition, C2 and
+B2 (and likewise each adjacent grid step) are compared on that same competition,
 and the per-competition deltas are aggregated. Between-competition variance on
 MLE-bench is far larger than the effect under test, so an unpaired comparison at
 this n would be unreadable whatever the true effect.
@@ -461,24 +509,24 @@ this n would be unreadable whatever the true effect.
 - *Direction summary.* The fraction of competition-seed pairs where C2 beats
   B2, reported beside the interval. This is a sign-test-style readout that does
   not depend on where a run happens to fall relative to a medal threshold.
-- *Separation criterion for H1.* H1 is supported if the mean paired delta is
+- *Separation criterion, H1's headline metric only.* H1 is supported if the mean paired delta is
   positive, the 90% bootstrap interval excludes zero, and the direction summary
   exceeds one half. If any of the three fails, H1 is not supported at POC
   scale. This is explicitly a directional criterion at this n. It is committed
   in advance so that "beyond seed noise" in the hypothesis statement has a
   fixed operational meaning rather than one selected after seeing results.
-- *Secondary metrics.* Analyzed the same paired way, with the same interval and
-  direction summary.
+- *Every other measure.* Analyzed the same paired way, with the same interval and
+  direction summary, but carrying no separation criterion (see Multiplicity).
 - *Pinning.* The eval competition subset and the seed list are recorded in
   DECISIONS.md before the first eval run.
 
 Implemented in `analysis/stats.py` (paired deltas, bootstrap interval,
 direction summary), unit-tested against synthetic fixtures.
 
-**Cost/efficiency accounting (added 2026-07-17, pre-run):** every run
-carries a two-sided ledger linking upfront specification cost to downstream
-agent behavior, answering whether C's additional spec-build LLM calls save
-agent cycles relative to B:
+**Instrumentation: the two-sided ledger (added 2026-07-17, pre-run).** Every run
+records upfront specification cost alongside downstream agent behavior. This is
+the data collection that H3 is computed from; the claim itself is stated under
+H3, not here.
 
 - *Spec side* (registry + `llm_usage.json` per run artifact): build
   wall-clock, LLM call count, input/output tokens — per call, in stage
@@ -608,11 +656,10 @@ contribution, and retrieval-grounded fraction (non-empty
   - *C1.* Single seed across 3–4 competitions, so the B2/C1/C2 decomposition
     is qualitative rather than an isolation result (see the C1 pilot note
     under experimental design).
-  - *Consequence.* The primary MLE-bench metric is directional. Secondary
-    metrics and the mechanistic judging carry the evidential weight, and the
-    separation criterion in Outcome metrics exists so that "beyond seed noise"
-    is adjudicated by a rule committed in advance rather than chosen after
-    seeing results.
+  - *Consequence.* Results are directional at this n; see "Metric weight by
+    scale" under Outcome metrics for how that shapes each measure. The
+    separation criterion there exists so "beyond seed noise" is adjudicated by a
+    rule committed in advance rather than chosen after seeing results.
   - *Why not simply run more.* Scope is bounded by budget, not by a judgment
     that this n is scientifically correct. The Roadmap records the reasoning
     and the pre-costed expansion path.
