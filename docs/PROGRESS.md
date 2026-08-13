@@ -67,3 +67,9 @@ CLAUDE.md.
   agent artifacts (submission, journal, best solution, per-call token log) onto
   the persistent volume, so `--terminate-on-done` can't lose the
   mechanistic-judge inputs.
+- ✅ Dev corpus rebuilt under the generalized summary prompt and
+  `voyage-4-large`: 5,937/5,937 notebook summaries via the Message Batches API,
+  zero errors, ~$16.54 measured ($0.0030/notebook). Zero leading markdown
+  headers and zero truncations at scale, `summary_model` homogeneous across the
+  collection. `competition_metadata` re-embedded (1,005 chunks);
+  `practitioner_knowledge` dropped as unqueried.

@@ -123,6 +123,12 @@ an explicit operator instruction in the current session:
 affects the experimental design, the corpus, the run matrix, or anything a
 reviewer would want justified, append an entry the same day.
 
+Record a **decision** ("we chose X over Y because Z"), not a **milestone** ("we
+did X and it worked") and not documentation housekeeping. Milestones belong in
+`docs/PROGRESS.md`; reorganizing a doc needs no entry at all. A useful test: if
+the entry has no alternative that was rejected and no consequence a reviewer
+would question, it is not a decision.
+
 - Keep an entry short where a line will do, with the full rationale at the
   pointer. Extend it when the reasoning *is* the decision and would otherwise
   live nowhere.
