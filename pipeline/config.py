@@ -24,10 +24,11 @@ EVAL_MODEL = "claude-sonnet-5"
 
 # ── Collections ─────────────────────────────────────────────────────
 COMPETITION_METADATA = "competition_metadata"
-# Ingested and retained, but NOT queried at spec time: the retrieval unit is the
-# notebook summary (2026-08-03 probe — code chunks added little transferable
-# signal over a rich summary at multiples of the token cost). Kept for a possible
-# future curated-cell grounding path.
+# Collection DROPPED at the voyage-4-large re-ingest (2026-08-03): unqueried since
+# the retrieval unit became the notebook summary, and its voyage-code-3 vectors are
+# an incompatible-space liability. Constant + ingest_notebooks module kept as a
+# dormant rebuild path if curated-cell grounding is ever revived (re-embed from
+# scratch). Not referenced by any spec-time code.
 PRACTITIONER_KNOWLEDGE = "practitioner_knowledge"
 NOTEBOOK_SUMMARIES = "notebook_summaries"
 
@@ -38,6 +39,38 @@ STAGE_N_NOTEBOOKS = 8  # distinct notebook-summary docs contributed per directed
 # ── Condition B (flat) ──────────────────────────────────────────────
 METADATA_K = 5  # parity with the parse stage
 BASELINE_N_NOTEBOOKS = 24  # parity: == 3 staged stages x STAGE_N_NOTEBOOKS distinct summaries
+
+
+def validate_parity() -> None:
+    """Fail loudly if the document-budget parity invariant has been broken.
+
+    Parity is a research-validity invariant of the experimental design: Condition
+    B and the staged conditions must reason over the same number of distinct
+    notebook-summary documents, plus equal metadata (docs/RESEARCH_DESIGN.md,
+    design notes on document budgets). It previously lived only in prose, so a
+    mis-edit to any budget here would have silently invalidated every
+    cross-condition comparison in a run rather than failing.
+
+    Run at import (below) rather than from each condition entry point, so there
+    is no call site to forget and a bad edit fails at the earliest moment.
+    """
+    if BASELINE_N_NOTEBOOKS != 3 * STAGE_N_NOTEBOOKS:
+        raise ValueError(
+            f"document-budget parity broken: BASELINE_N_NOTEBOOKS ({BASELINE_N_NOTEBOOKS}) "
+            f"!= 3 x STAGE_N_NOTEBOOKS ({STAGE_N_NOTEBOOKS}). Condition B and the staged "
+            "conditions would reason over different distinct-document budgets, which "
+            "invalidates the flat-vs-staged comparison (docs/RESEARCH_DESIGN.md, "
+            "design notes on document budgets)."
+        )
+    if METADATA_K != RETRIEVAL_K:
+        raise ValueError(
+            f"metadata parity broken: METADATA_K ({METADATA_K}) != RETRIEVAL_K "
+            f"({RETRIEVAL_K}). B's flat metadata pass and C's parse stage would see "
+            "different budgets (docs/RESEARCH_DESIGN.md, design notes on document budgets)."
+        )
+
+
+validate_parity()
 
 # ── Retrieval quality ───────────────────────────────────────────────
 # Deliberately unset by default — calibrate against the real corpus before

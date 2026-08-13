@@ -1,8 +1,8 @@
 # Cost / Scope Tracking
 
-Update this file whenever conditions, competition count, or seed count
-change. Last updated: 2026-07-31 (POC scope + scale-up cost confirmation; no
-eval runs yet).
+Update this file whenever conditions, competition count, or seed count change.
+Last updated: 2026-08-11 (measured per-notebook batch rate;
+superseded code-chunk-era notes collapsed into History). No eval runs yet.
 
 ## Run matrix (POC scope — decided 2026-07-22)
 
@@ -15,45 +15,60 @@ eval runs yet).
 | C2 | 3–5 | 3 | 9–15 |
 | **Total** | | | **~30–48** |
 
-Full Lite-22 (~94 runs, AWS-g5-class GPU) is the v1.5 plan if an initial
-result is pursued.
+Scope is bounded by budget, not by a judgment that this n is scientifically
+correct (RESEARCH_DESIGN.md, Roadmap). Full Lite-22 (~94 runs) is the v1.5 plan
+if an initial result is pursued.
 
 ## Cost estimate
 
-- **GPU compute (dominant):** ~30–48 runs × Lambda A10 (~\$1.29/hr) at
-  MLE-bench Lite runtimes, with a reduced per-run step/time cap (set from
-  smoke timings — TBD) → **low hundreds of dollars, well under the v1 estimate**
+- **GPU compute (dominant):** ~30–48 runs × Lambda A10 (~\$1.29/hr) at MLE-bench
+  Lite runtimes, with a reduced per-run step/time cap set from smoke timings
+  (TBD) → **low hundreds of dollars**
 - **API (spec pipeline + judge):** B2/C1/C2 synthesis, C2's four structured
-  stages, judge passes — Sonnet for eval, Haiku elsewhere; spec-builds scale
-  with competition×condition, not seeds → **~\$15–50** at POC scope
-- **Embeddings:** the `voyage-code-3` free allocation is **one-time** (~200M,
-  not monthly), ~18M used / ~182M remaining (dashboard, 2026-07-31); the dev
-  corpus is already embedded, so eval runs cost only query embeddings → **~\$0**
-- Contingent matched-A arm (triggers per RESEARCH_DESIGN.md Condition A
-  note): **+GPU for one run per eval competition if triggered**; the small
+  stages, and judge passes. Sonnet for eval, Haiku elsewhere. Spec builds scale
+  with competition × condition, not with seeds → **~\$15–50** at POC scope
+- **Embeddings:** `voyage-4-large` at \$0.12/M with its own **200M free** grant.
+  Re-embedding the dev corpus is a few M tokens and eval runs cost only query
+  embeddings → **~\$0**. The voyage-4 family shares one embedding space, so the
+  query side can drop to a cheaper tier without re-embedding if volume ever
+  demands it.
+- **Judge validation:** human labeling of a 20–30 item sample → **\$0**, review
+  time only (docs/JUDGE_VALIDATION.md)
+- **Contingent matched-A arm:** triggers per the RESEARCH_DESIGN Condition A
+  note → **+GPU for one run per eval competition if triggered**. The small
   matched-A anchor comes free from registered smoke runs either way.
 
 ## One-time / infrastructure
 
-- Notebook-summary ingestion (`ingest.ingest_summaries`): one Haiku call per
-  unique notebook in the corpus slice — thousands of short calls, est.
-  \$5–15, resumable. **Actual (2026-07-15): ~\$20 for 5,937 notebooks**
-  (~\$0.003–0.005/notebook; estimate predated the notebook count).
-- Full-corpus expansion (pre-production): embedding the expanded practitioner
-  chunks (est. ~130–260M tokens — the ~10× vs ~20× dev-slice figures are
-  unresolved, so measure the real count before embedding) draws on the
-  one-time `voyage-code-3` grant (~182M remaining, 2026-07-31): ~\$0 if it
-  fits, a small overage (~\$14 at the high end) if not. MLEModernizer
-  ingestion is cloud-box disk/bandwidth, not API cost. Note: naively
-  re-running Haiku
-  summaries over full Code4ML (~20× notebooks) would be ~\$400 at the
-  observed per-notebook rate — budget deliberately before that step.
-  **Decision (2026-07-15): use the Anthropic Batch API (50% discount, same
-  pinned SUMMARY_MODEL — no homogeneity impact) for the Code4ML expansion:
-  ~\$200 for ~110–115k remaining notebooks.** MLEModernizer summary cost is
-  NOT included and is unsized until the tarball is opened on the cloud box:
-  two-level retrieval requires a level-one abstract per retrieval unit, so
-  either its units get the same batched-Haiku treatment (cost scales with
-  unit count, unknown) or native docs (READMEs/abstracts) serve as level-one
-  text (embedding-only cost). Count units and check for native abstracts
-  before estimating.
+- **Measured per-notebook rate (2026-08-11, 50-notebook batch on the current
+  prompt):** avg 3,468 input and 506 output tokens → **\$0.0030/notebook** at
+  Haiku Batch rates. The richer prompt did *not* raise the rate much, because
+  the 60k-char input cap rarely binds: the median notebook is only ~5.4k chars,
+  so most inputs sit far below it.
+- **Dev-corpus summaries (Lite-22, 5,937 notebooks):** **~\$18** at the measured
+  rate, in line with the ~\$20 actual on the original prompt (2026-07-15).
+- **Full-Code4ML expansion (~101.6k remaining notebooks):** summary *generation*
+  is the real spend, not embedding. Via the Anthropic Batch API (50% discount,
+  same pinned `SUMMARY_MODEL`, no homogeneity impact) → **~\$305–325** at the
+  measured rate, allowing for full Code4ML's slightly larger mean notebook
+  (~9.2k chars against Lite-22's ~8.7k). Revised up from the ~\$200 estimated on
+  2026-07-15 and the ~\$250–300 projected on 2026-08-03, both of which predated
+  measurement. Embedding the resulting summaries (~55–110M tokens) fits inside
+  the free grant → **~\$0**.
+- **MLEModernizer:** ingestion is cloud-box disk and bandwidth, not API cost.
+  Summary cost is **not** included above and stays unsized until the tarball is
+  opened on the box. Each retrieval unit needs an abstract, so either its units
+  get the same batched-Haiku treatment (cost scales with unit count, unknown) or
+  native README/abstract text serves directly (embedding-only cost). Count units
+  and check for native abstracts before estimating.
+
+## History
+
+Superseded cost models, kept so past decisions stay legible:
+
+- **Code-chunk retrieval era (through 2026-08-03).** When the retrieval unit was
+  the code chunk, the dominant embedding line was practitioner chunks at an
+  estimated ~130–260M tokens. Those chunks are no longer embedded or queried
+  (DECISIONS.md 2026-08-03), so corpus embedding cost is now summaries only.
+- **`voyage-code-3` grant.** The earlier one-time ~200M grant (~182M remaining)
+  does not carry over to `voyage-4-large`, which has its own 200M.

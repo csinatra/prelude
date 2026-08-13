@@ -9,10 +9,12 @@ A research POC for an Anthropic Fellows Program application. The deliverable
 is **evidence for a research claim**, not a production system. Optimize for
 clarity, traceable experiments, and reproducibility over polish.
 
-**Claim under test:** structured reasoning over retrieved organizational
-knowledge improves ML problem specification — and downstream agent
-performance on MLE-bench — *beyond* what unstructured knowledge provision
-(AssistedDS) achieves.
+**Claim under test:** directed retrieval and structured reasoning over
+retrieved **practitioner knowledge** improves ML problem specification, and the
+downstream agent performance it drives on MLE-bench, beyond what unstructured
+knowledge retrieval (AssistedDS) achieves. The corpus is public practitioner
+notebooks, not organizational knowledge; institutional knowledge is the
+direction this generalizes toward, not what the POC retrieves from.
 
 See [README.md](README.md) for the three-condition eval design, the four
 pipeline stages, and prior art.
@@ -115,6 +117,27 @@ an explicit operator instruction in the current session:
 - Calibration sweeps (`analysis.calibration` — LLM calls per competition)
 - Anything that consumes LangSmith trace quota in bulk
 
+## Keeping the decision log
+
+`docs/DECISIONS.md` is the dated audit trail for the writeup. When a change
+affects the experimental design, the corpus, the run matrix, or anything a
+reviewer would want justified, append an entry the same day.
+
+Record a **decision** ("we chose X over Y because Z"), not a **milestone** ("we
+did X and it worked") and not documentation housekeeping. Milestones belong in
+`docs/PROGRESS.md`; reorganizing a doc needs no entry at all. A useful test: if
+the entry has no alternative that was rejected and no consequence a reviewer
+would question, it is not a decision.
+
+- Keep an entry short where a line will do, with the full rationale at the
+  pointer. Extend it when the reasoning *is* the decision and would otherwise
+  live nowhere.
+- Append only. Never rewrite or delete a past entry, even a wrong one.
+- A reversed decision gets a **new dated entry recording the reversal and why**,
+  leaving the original in place. The change of mind is part of the record.
+- Pre-registration discipline: anything touching hypotheses, metrics, or the
+  analysis plan must be logged *before* eval runs, not after.
+
 ## Execution environments
 
 Two machines, split by responsibility; `results/runs.jsonl` is the merge
@@ -184,7 +207,7 @@ pipeline/
 ├── llm_client.py           # call_llm() schema-constrained + call_llm_text() freeform
 ├── retriever.py             # retrieve() flat top-k + retrieve_with_topup() staged
 │                             #   (cross-stage distinct-doc top-up); leave-one-out in BOTH
-├── embeddings.py             # embed() — voyage-code-3 for documents and queries, batched
+├── embeddings.py             # embed() — voyage-4-large for documents and queries, batched
 ├── condition_b.py             # Condition B: run_b1() raw block, run_b2() freeform pass
 ├── condition_c1.py             # Condition C1: staged retrieval + B2 freeform synthesis
 ├── condition_c2.py              # run_c2() — Condition C2 entry point over the graph
@@ -245,31 +268,46 @@ result = app.invoke(input={"problem_statement": "..."})
 
 ## Current state
 
-Four-stage C2 pipeline plus B1/B2/C1 conditions built and
-live-verified end-to-end. Dev corpus ingested: 1,005 metadata
-chunks, 62,379 practitioner chunks, 5,937 notebook summaries.
-Spec-side harness working: per-condition spec.md renderer,
-append-only runs.jsonl registry, per-run artifacts with
-provenance + usage ledger. Threshold calibration decided pre-run:
-SIMILARITY_THRESHOLD=None for v1. Cloud-box half scaffolded
-(aide-prelude agent variant, advancement CLI, provisioning
-script) but unverified — no GPU box yet.
-History: [docs/PROGRESS.md](docs/PROGRESS.md).
+Four-stage C2 pipeline plus B1/B2/C1 conditions built and unit-tested.
+Retrieval unit is the notebook **summary** (code-chunk retrieval retired after a
+2026-08-03 probe); staged conditions use directed per-stage retrieval with
+cross-stage top-up for distinct-document parity with B. Prompts generalized
+beyond Kaggle framing; summaries are richer whole-notebook abstracts (pinned
+Haiku). Embedding model switched to `voyage-4-large` (general-purpose fits the
+now NL↔NL retrieval); batch-mode summary ingest built (`ingest_summaries
+--batch`, Message Batches API).
+
+Spec-side harness working: per-condition spec.md renderer, append-only
+runs.jsonl registry, per-run artifacts with provenance + usage ledger.
+SIMILARITY_THRESHOLD=None for v1. Cloud-box verified end-to-end (2026-07-24):
+box provisioned, smoke run GREEN (Haiku → valid graded submission), B/C spec
+injection confirmed via the PRELUDE_SPEC_PATH mount.
+
+**Pending re-ingest:** the live ChromaDB store still holds the old voyage-code-3
+summaries — the new prompt + voyage-4-large take effect only after
+`ingest_metadata --rebuild` + `ingest_summaries --rebuild` (dev Lite-22 first;
+`practitioner_knowledge` to be dropped), after which the pipeline is re-verified
+end-to-end. History: [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Next
-1. Cloud-box half of the harness: inject spec.md into AIDE inside the
-   MLE-bench container (no LLM calls in there — core constraint 1),
-   advance runs through agent_run → graded in runs.jsonl, wire MLE-bench
-   grading + secondary metrics into the registry.
-2. Corpus expansion before production runs: remaining Code4ML summaries
-   via the Anthropic Batch API (~$200 decision recorded in
-   COST_ESTIMATE.md; needs a batch-mode ingest variant), then size
-   MLEModernizer after opening the tarball on the cloud box (unit count +
-   native-abstract check first). Re-run the calibration sweep after any
-   expansion — thresholds are corpus-relative.
-3. Eval runs per RESEARCH_DESIGN.md (B1/B2/C1-pilot/C2, ~10 Lite
-   competitions × 3 seeds, Sonnet) + mechanistic judging via
-   analysis/judge.py against the frozen rubric.
+1. Re-ingest the dev corpus under the new prompt + `voyage-4-large`
+   (`ingest_metadata --rebuild`, `ingest_summaries --rebuild`; drop
+   `practitioner_knowledge`), then re-verify the pipeline end-to-end.
+2. Re-run the `SIMILARITY_THRESHOLD` calibration before eval runs — thresholds
+   are corpus-relative and both the retrieval representation (summary unit) and
+   the embedding model changed (currently `None` for v1).
+3. Cloud-box harness: spec injection and a single-run smoke are verified
+   (2026-07-24). Remaining: exercise the automated batch drain end-to-end, since
+   the grade-via-JSONL and journal-metric seams are still unexercised on a real
+   multi-run. Spec generation stays local (DECISIONS.md 2026-08-11 reverses the
+   earlier all-cloud plan), so specs are built and inspected in one batch, then
+   synced to the box with the registry rows before draining.
+4. Corpus scale-up to full Code4ML via `ingest.ingest_summaries --batch` (built),
+   then size MLEModernizer after opening the tarball on the cloud box (unit count
+   + native-abstract check first). Re-calibrate after any expansion.
+5. Eval runs per RESEARCH_DESIGN.md (B1/B2/C1-pilot/C2 on the POC-scope Lite
+   subset × 3 seeds, Sonnet) + mechanistic judging via analysis/judge.py against
+   the frozen rubric.
 
 ## Out of scope (don't propose these unprompted)
 

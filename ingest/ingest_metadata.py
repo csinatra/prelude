@@ -3,14 +3,18 @@
 Sources: Code4ML competitions.csv (structured descriptions, eval metrics) and
 mle-bench description.md files (authoritative specs for the eval competitions).
 
-Usage: python -m ingest.ingest_metadata   (run ingest.download first)
+Usage: python -m ingest.ingest_metadata [--rebuild]   (run ingest.download first)
+--rebuild drops the collection first — required to re-embed under a new
+embedding model (otherwise upsert keeps stale vectors for removed ids).
 """
+
+import argparse
 
 import pandas as pd
 
 from ingest.chunking import split_oversized
 from ingest.config import COMPETITION_METADATA, LITE_COMPETITIONS, RAW_DIR
-from ingest.store import add_documents, get_collection
+from ingest.store import add_documents, drop_collection, get_collection
 
 
 def _code4ml_docs() -> tuple[list[str], list[str], list[dict]]:
@@ -53,7 +57,10 @@ def _mlebench_docs() -> tuple[list[str], list[str], list[dict]]:
     return ids, texts, metadatas
 
 
-def main() -> None:
+def main(*, rebuild: bool = False) -> None:
+    if rebuild:
+        drop_collection(name=COMPETITION_METADATA)
+        print(f"dropped {COMPETITION_METADATA} for rebuild")
     collection = get_collection(name=COMPETITION_METADATA)
     for label, (ids, texts, metadatas) in {
         "code4ml": _code4ml_docs(),
@@ -65,4 +72,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--rebuild", action="store_true", help="drop the collection first (e.g. after an embedding-model change)"
+    )
+    main(rebuild=parser.parse_args().rebuild)

@@ -26,6 +26,7 @@ from pipeline.condition_b import run_b1, run_b2
 from pipeline.condition_c1 import run_c1
 from pipeline.condition_c2 import run_c2
 from pipeline.llm_client import reset_usage, usage_log, usage_snapshot
+from pipeline.retriever import reset_shortfalls, shortfall_log
 
 DESCRIPTIONS_DIR = Path("data/raw/mlebench_descriptions")
 
@@ -55,6 +56,34 @@ def _extract_retrievals(*, condition: str, output: dict) -> dict | list:
     return output["retrieved"]
 
 
+def _spec_metrics(*, condition: str, output: dict) -> dict:
+    """Spec-side sanity metrics, consolidated so condition-level tables fall out
+    of the registry without re-parsing artifacts.
+
+    Flag fields are C2-only (B/C1 produce no structured flags), and are reported
+    as None rather than 0 there so "no flags produced" stays distinguishable
+    from "condition has no flag stage."
+    """
+    if condition != "C2":
+        return {
+            "flag_count": None,
+            "flags_by_category": None,
+            "flag_grounded_fraction": None,
+            "recommendation_count": None,
+        }
+    flags = output.get("assumption_flags", [])
+    by_category: dict[str, int] = {}
+    for flag in flags:
+        by_category[flag["category"]] = by_category.get(flag["category"], 0) + 1
+    grounded = sum(1 for flag in flags if flag.get("evidence_doc_ids"))
+    return {
+        "flag_count": len(flags),
+        "flags_by_category": by_category,
+        "flag_grounded_fraction": round(grounded / len(flags), 3) if flags else None,
+        "recommendation_count": len(output.get("recommendations", [])),
+    }
+
+
 def _count_tokens(*, text: str) -> int | None:
     """Injected-artifact token count (a reported design metric). None if unavailable."""
     try:
@@ -73,6 +102,7 @@ def run_condition(*, competition_id: str, condition: str, seed: int) -> Path:
     """Build one spec, save artifacts, register the run. Returns the run directory."""
     raw_problem = load_description(competition_id=competition_id)
     reset_usage()
+    reset_shortfalls()
     build_started = time.monotonic()
     output = CONDITION_RUNNERS[condition](
         raw_problem=raw_problem, competition_id=competition_id
@@ -91,6 +121,11 @@ def run_condition(*, competition_id: str, condition: str, seed: int) -> Path:
     )
     # Per-call spec-build usage, call order == stage order (sequential nodes).
     (run_dir / "llm_usage.json").write_text(json.dumps(usage_log(), indent=2))
+    # Distinct-document parity shortfalls, if any. Written only when non-empty so
+    # the file's presence is itself the signal that a run needs a closer look.
+    shortfalls = shortfall_log()
+    if shortfalls:
+        (run_dir / "retrieval_shortfalls.json").write_text(json.dumps(shortfalls, indent=2))
     append_run(
         entry={
             "run_key": run_key(competition_id=competition_id, condition=condition, seed=seed),
@@ -109,6 +144,8 @@ def run_condition(*, competition_id: str, condition: str, seed: int) -> Path:
             "spec_llm_calls": usage["llm_calls"],
             "spec_llm_input_tokens": usage["input_tokens"],
             "spec_llm_output_tokens": usage["output_tokens"],
+            "retrieval_shortfall_count": len(shortfalls),
+            **_spec_metrics(condition=condition, output=output),
             **_git_provenance(),
             "llm_provider": os.environ.get("LLM_PROVIDER", "anthropic"),
             "model": os.environ.get("MODEL"),

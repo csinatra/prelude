@@ -6,6 +6,8 @@ aggregate per-category. Judged via the same call_llm structured-output seam
 as the pipeline; tests mock it.
 """
 
+import hashlib
+import os
 from collections import defaultdict
 from pathlib import Path
 from typing import Literal
@@ -16,6 +18,11 @@ from pipeline.llm_client import call_llm
 
 RUBRIC_PATH = Path("docs/JUDGE_RUBRIC.md")
 
+JUDGE_SYSTEM_PREAMBLE = (
+    "You are a strict evaluation judge. Classify one specification flag against a "
+    "run's solution artifacts, following this frozen rubric exactly:\n\n"
+)
+
 
 class FlagJudgment(BaseModel):
     classification: Literal["not_acted_on", "acted_on_unclear", "acted_on_positive"]
@@ -23,19 +30,35 @@ class FlagJudgment(BaseModel):
     reasoning: str
 
 
+def judge_provenance() -> dict:
+    """What produced a judgment, so it can be reproduced or invalidated later.
+
+    The rubric is frozen but the judge model and prompt are not pinned by the
+    rubric itself, so a re-judge under a different model or a reworded preamble
+    would otherwise be indistinguishable from the original. Recorded per run
+    alongside the judgments (see docs/JUDGE_VALIDATION.md).
+    """
+    rubric = RUBRIC_PATH.read_text()
+    return {
+        "judge_model": os.environ.get("MODEL"),
+        "rubric_sha256": hashlib.sha256(rubric.encode()).hexdigest(),
+        "judge_prompt_sha256": hashlib.sha256(
+            (JUDGE_SYSTEM_PREAMBLE + rubric).encode()
+        ).hexdigest(),
+    }
+
+
 def judge_flags(*, flags: list[dict], solution: str, logs: str = "") -> list[FlagJudgment]:
     """Judge each flag independently against the frozen rubric.
 
     Per the rubric, the judge never sees the run's score or medal outcome.
+    Call judge_provenance() and store its output beside these judgments.
     """
     rubric = RUBRIC_PATH.read_text()
     judgments = []
     for flag in flags:
         judgment = call_llm(
-            system=(
-                "You are a strict evaluation judge. Classify one specification flag against a "
-                "run's solution artifacts, following this frozen rubric exactly:\n\n" + rubric
-            ),
+            system=JUDGE_SYSTEM_PREAMBLE + rubric,
             user=(
                 f"Flag category: {flag['category']}\n"
                 f"Flag explanation: {flag['explanation']}\n\n"

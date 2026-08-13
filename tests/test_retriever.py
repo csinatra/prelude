@@ -52,6 +52,39 @@ def test_score_threshold_filters_weak_matches(fixture_collection):
     assert [doc.doc_id for doc in docs] == ["doc_near"]
 
 
+def test_threshold_is_read_from_config_at_call_time(fixture_collection, monkeypatch):
+    """A threshold set after import must take effect, not the import-time value.
+
+    Guards the config/retriever split: config resolves SIMILARITY_THRESHOLD from
+    the environment on import, so binding it as a default argument froze it.
+    """
+    from pipeline import config
+
+    monkeypatch.setattr(config, "SIMILARITY_THRESHOLD", 0.5)
+    docs = retriever.retrieve(
+        query="anything",
+        collection="practitioner_knowledge",
+        exclude_competition="current-comp",
+        k=3,
+    )
+    assert [doc.doc_id for doc in docs] == ["doc_near"]  # doc_far filtered out
+
+
+def test_explicit_none_threshold_still_disables_filtering(fixture_collection, monkeypatch):
+    """None passed by a caller means 'no filtering', and must not be read as 'use config'."""
+    from pipeline import config
+
+    monkeypatch.setattr(config, "SIMILARITY_THRESHOLD", 0.99)
+    docs = retriever.retrieve(
+        query="anything",
+        collection="practitioner_knowledge",
+        exclude_competition="current-comp",
+        k=3,
+        score_threshold=None,
+    )
+    assert len(docs) == 2  # nothing filtered despite the strict config threshold
+
+
 def test_k_caps_results(fixture_collection):
     docs = retriever.retrieve(
         query="anything",
