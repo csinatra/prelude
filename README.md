@@ -110,11 +110,20 @@ python -m ingest.ingest_metadata    # → competition_metadata collection
 python -m ingest.ingest_summaries   # → notebook_summaries (one LLM abstract per notebook; resumable)
 ```
 
+The eval corpus widens the notebook slice past Lite-22 and keeps only notebooks
+carrying a positive `kaggle_score` — the available evidence that a notebook
+produced a real submission:
+
+```bash
+python -m ingest.ingest_summaries --scope full --scored-only --batch --rebuild
+```
+
 `--rebuild` drops and rebuilds a collection, which is required after an
 embedding-model or summary-prompt change since skip-existing resumability would
-otherwise leave stale records in place. For the full-corpus run, `--batch` on
-`ingest_summaries` uses the Anthropic Message Batches API (50% discount, async,
-resumes after interruption).
+otherwise leave stale records in place. `--batch` uses the Anthropic Message
+Batches API (50% discount, async, resumes after interruption), which the
+full-scope run needs at its size. Sizing and cost for both slices are in
+[COST_ESTIMATE.md](docs/COST_ESTIMATE.md).
 
 ## Related work
 

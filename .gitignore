@@ -8,3 +8,6 @@ __pycache__/
 .langsmith/
 results/
 data/
+
+# macOS
+.DS_Store

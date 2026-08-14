@@ -31,6 +31,15 @@ MLEBENCH_DESCRIPTION_URL = (
     "https://raw.githubusercontent.com/openai/mle-bench/main/mlebench/competitions/{slug}/description.md"
 )
 
+# Notebook-selection scopes for the practitioner corpus (ingest.ingest_summaries).
+#   "lite" — notebooks from the Lite-22 competitions only. The dev corpus: small
+#            enough to rebuild cheaply while iterating on prompts or embeddings.
+#   "full" — every competition in Code4ML. Leave-one-out at query time still
+#            excludes the competition being specified, so including the eval
+#            competitions' own notebooks is not leakage.
+# CORPUS_SCOPES maps a scope to the competition allowlist, or None for no filter.
+DEFAULT_SCOPE = "lite"
+
 # MLE-bench Lite — the 22 Low-complexity competitions (experiments/splits/low.txt).
 LITE_COMPETITIONS = [
     "aerial-cactus-identification",
@@ -56,3 +65,8 @@ LITE_COMPETITIONS = [
     "text-normalization-challenge-russian-language",
     "the-icml-2013-whale-challenge-right-whale-redux",
 ]
+
+CORPUS_SCOPES: dict[str, list[str] | None] = {
+    "lite": LITE_COMPETITIONS,
+    "full": None,
+}
