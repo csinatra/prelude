@@ -409,6 +409,40 @@ Design notes:
   competition-metadata chunks, so the filter excludes the current competition's
   own artifacts directly. A code path bypassing this filter is solution leakage
   (CLAUDE.md core constraint 5).
+- **Two document classes, and what they stand for (2026-08-17).** The corpus
+  holds solution artifacts (`notebook_summaries`) and problem-scoping artifacts
+  (`competition_metadata`). Both classes exist in real institutional knowledge
+  bases: notebooks map onto internal analyses, prior model work, and
+  postmortems; competition descriptions map onto project briefs, scoping docs,
+  model-card intended-use sections, and ML intake tickets. They are distinct
+  classes in production for the same reason they are here — written at a
+  different time, by different people, for a different purpose than the solution
+  write-up. A heterogeneous corpus is therefore *more* faithful to the
+  generalization target than a single-class one, since institutional knowledge is
+  heterogeneous by document class.
+
+  Every condition draws from **both** classes, in equal amounts: `METADATA_K`
+  scoping documents plus `BASELINE_N_NOTEBOOKS` distinct solution documents.
+  What differs is arrival — B takes both in one flat pass, while the staged
+  conditions take scoping documents at parse and solution documents across
+  surface/flag/advise. That difference *is* the treatment; the class mix is a
+  held constant.
+
+  Two simplifications are deliberate and stated rather than hidden. (1) The
+  classes live in **separate indices** where production would use one. This is a
+  control, not an oversight: a single index would let ranking dynamics *between*
+  document classes vary across conditions, turning part of the measured effect
+  into a retrieval-ranking artifact. Separate indices hold the mix fixed, so the
+  contrast isolates the mechanistic impact of staging. (2) Retrieval is **routed
+  by document class** rather than by relevance, and in the staged conditions that
+  routing is also per-stage. Whether parse is the right stage to spend scoping
+  documents on is untested, and is a roadmapped ablation.
+
+  What the scoping class uniquely provides: problems **as posed**, gaps and
+  ambiguities intact. A notebook summary describes a problem **as solved**, by
+  someone who has already resolved the ambiguity. Noticing what a specification
+  omits requires a reference distribution of how such problems are normally
+  specified, and only the scoping class supplies it.
 - **Summary-unit rationale:** the retrieval unit is the notebook summary — a
   notebook is an approach, and a rich whole-notebook abstract carries the
   transferable content (models, feature engineering, validation, pitfalls),
@@ -711,6 +745,16 @@ decomposing.
 - *Stance ablation.* C2 with the structured schemas but without
   `RETRIEVAL_STANCE`, isolating critical integration from decomposition. These
   are currently bundled in the single C1-to-C2 step.
+- *Document-class routing ablation.* Two single-variable arms over the corpus
+  simplifications stated under Corpus construction: drop the scoping class
+  entirely, and route it to flag rather than parse. v1 spends scoping documents
+  at parse for historical reasons — the choice predates the retirement of
+  two-level retrieval, which needed a competition shortlist to drill into — and
+  flag is the stage that reasons about what a specification omits. Cheap to run
+  (no re-ingest; both classes are already built), and it answers whether the
+  routing earns its keep rather than assuming it. Any arm that changes which
+  class a stage draws from must re-derive the document-budget parity, since
+  parity is on distinct documents *plus* equal scoping-class counts.
 - *Second-judge reliability check* (see below), which belongs to this cluster
   even though it costs less than the arms above.
 
