@@ -9,6 +9,7 @@ before a full re-ingest — it writes nothing to the corpus.
 Run: PYTHONPATH=. .venv/bin/python -m analysis.review_summaries
 (needs ANTHROPIC_API_KEY; source .env first).
 """
+from ingest.config import DEFAULT_SCOPE
 from ingest.ingest_summaries import MAX_NOTEBOOK_CHARS, _load_notebooks, _summarize
 
 TARGETS = [
@@ -36,10 +37,10 @@ def _has_markdown(text: str) -> bool:
 
 
 def main() -> None:
-    notebooks = _load_notebooks()
+    notebooks = _load_notebooks(scope=DEFAULT_SCOPE, scored_only=False)
     by_comp: dict[str, list[tuple[int, dict]]] = {}
     for kid, entry in notebooks.items():
-        total = sum(len(block) for block in entry["blocks"])
+        total = entry["chars"]
         if entry["competition_id"] in TARGETS and 8_000 <= total <= MAX_NOTEBOOK_CHARS and len(entry["blocks"]) >= 6:
             by_comp.setdefault(entry["competition_id"], []).append((kid, entry))
 

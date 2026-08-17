@@ -86,7 +86,8 @@ SUMMARY_SYSTEM = (
     "<cover>\n"
     "Cover what the notebook actually shows: the problem it addresses, the choices the author "
     "made, and why they made them. Be concrete where the notebook is concrete — name what was "
-    "used rather than describing it in general terms. A reader should come away knowing things "
+    "used rather than describing it in general terms, including how the work was validated: the "
+    "resampling scheme and the metric being optimized. A reader should come away knowing things "
     "they could not have guessed from the problem statement alone.\n\n"
     "Let the notebook set the scope: cover everything it genuinely shows, and stay silent on what "
     "it does not. Do not infer reasoning the author did not express, and do not supply generic "
@@ -137,7 +138,7 @@ def _select(*, scope: str, scored_only: bool) -> dict[int, dict]:
         ):
             entry = selected.setdefault(
                 int(kaggle_id),
-                {"competition_id": str(source), "kaggle_score": None, "blocks": []},
+                {"competition_id": str(source), "kaggle_score": None, "blocks": [], "chars": 0},
             )
             if pd.notna(score):
                 current = entry["kaggle_score"]
@@ -164,13 +165,16 @@ def _load_notebooks(*, scope: str, scored_only: bool) -> dict[int, dict]:
     for frame in _read_blocks(columns=["kaggle_id", "code_block"]):
         for kaggle_id, block in zip(frame["kaggle_id"], frame["code_block"]):
             entry = notebooks.get(int(kaggle_id))
-            # Stop once past the cap — _notebook_text truncates to the same point,
-            # so the retained prefix is byte-identical to loading every block.
-            if entry is None or entry.get("chars", 0) >= MAX_NOTEBOOK_CHARS:
+            if entry is None:
                 continue
             text = str(block)
-            entry["blocks"].append(text)
-            entry["chars"] = entry.get("chars", 0) + len(text) + 2
+            # Stop appending once past the cap — _notebook_text truncates to the
+            # same point, so the retained prefix is byte-identical to loading
+            # every block. `chars` keeps counting past the cap regardless, so
+            # callers can still tell how large the notebook actually was.
+            if entry["chars"] < MAX_NOTEBOOK_CHARS:
+                entry["blocks"].append(text)
+            entry["chars"] += len(text) + 2
     return notebooks
 
 
