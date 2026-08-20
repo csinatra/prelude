@@ -675,6 +675,21 @@ contribution, and retrieval-grounded fraction (non-empty
   audit showed the practical effect: competitions with shallow near-neighbor pools
   retrieve further down the ranking and pick up more low-substance documents.
   Corpus expansion reduces this; it does not remove the reporting obligation.
+- **Corpus homogeneity (structural, conservative).** Every practitioner document
+  is one model under one prompt, so the corpus shares a register, length, and
+  organization that a real knowledge base — tickets, notebooks, postmortems,
+  write-ups by many hands — would not. This shows up measurably as a compressed
+  similarity range: summaries fall off 0.008–0.016 from rank 1 to rank 5, against
+  0.005–0.089 for the human-written scoping documents. The heterogeneity of
+  document *quality* is deliberate and representative (see corpus construction);
+  the uniformity of document *form* is an artifact of how the corpus is built.
+  Direction of bias is toward the null: uniformly well-organized documents are
+  easiest for the condition that reasons over them flat and undirected, so
+  structure should help least where every document is already digestible. A
+  measured C advantage is therefore conservative with respect to this limitation.
+  Not addressable at POC scale — deliberately varying the summarizer would
+  manufacture artificial variance and introduce a generation confound, not
+  reproduce real heterogeneity.
 - **POC scale (consolidated, NOT structural).** Several limitations follow from
   running small. They are collected here rather than scattered across the
   document. None is a flaw in the design, and unlike the structural limits above,
