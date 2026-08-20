@@ -1,0 +1,227 @@
+{
+  "provenance": {
+    "embed_model": "voyage-4-large",
+    "collection": "notebook_summaries",
+    "collection_count": 5937,
+    "k": 24,
+    "random_seed": 0,
+    "measured_at": "2026-08-12T20:56:04.705980+00:00"
+  },
+  "staged_comparison": true,
+  "results": [
+    {
+      "competition_id": "spooky-author-identification",
+      "query_task_type": "unlabeled",
+      "source_task_types": {
+        "unlabeled": 24
+      },
+      "top_source_share": 1.0,
+      "n_docs": 24,
+      "query_similarity_top": 0.5214,
+      "query_similarity_bottom": 0.5017,
+      "query_similarity_spread": 0.0197,
+      "retrieved_internal_similarity": 0.8659,
+      "random_internal_similarity": 0.502,
+      "excess_redundancy": 0.364,
+      "distinct_techniques_retrieved": 13,
+      "distinct_techniques_random": 25,
+      "top_techniques": [
+        [
+          "logistic regression",
+          22
+        ],
+        [
+          "tf-idf",
+          21
+        ],
+        [
+          "cross-validation",
+          13
+        ],
+        [
+          "naive bayes",
+          12
+        ],
+        [
+          "tfidf",
+          5
+        ],
+        [
+          "ensemble",
+          5
+        ],
+        [
+          "stacking",
+          4
+        ],
+        [
+          "stratified",
+          4
+        ]
+      ],
+      "source_competitions": {
+        "jigsaw-toxic-comment-classification-challenge": 24
+      },
+      "staged_condition_c": {
+        "n_distinct_docs": 24,
+        "internal_similarity": 0.8354,
+        "distinct_techniques": 19,
+        "top_source_share": 1.0,
+        "source_task_types": {
+          "unlabeled": 24
+        },
+        "source_competitions": {
+          "jigsaw-toxic-comment-classification-challenge": 24
+        }
+      }
+    },
+    {
+      "competition_id": "nomad2018-predict-transparent-conductors",
+      "query_task_type": "unlabeled",
+      "source_task_types": {
+        "unlabeled": 24
+      },
+      "top_source_share": 0.583,
+      "n_docs": 24,
+      "query_similarity_top": 0.4516,
+      "query_similarity_bottom": 0.4296,
+      "query_similarity_spread": 0.0219,
+      "retrieved_internal_similarity": 0.6378,
+      "random_internal_similarity": 0.4891,
+      "excess_redundancy": 0.1488,
+      "distinct_techniques_retrieved": 17,
+      "distinct_techniques_random": 23,
+      "top_techniques": [
+        [
+          "cross-validation",
+          13
+        ],
+        [
+          "xgboost",
+          11
+        ],
+        [
+          "ensemble",
+          11
+        ],
+        [
+          "gradient boosting",
+          10
+        ],
+        [
+          "lightgbm",
+          8
+        ],
+        [
+          "stratified",
+          6
+        ],
+        [
+          "stacking",
+          4
+        ],
+        [
+          "embedding",
+          3
+        ]
+      ],
+      "source_competitions": {
+        "tabular-playground-series-dec-2021": 3,
+        "new-york-city-taxi-fare-prediction": 14,
+        "dogs-vs-cats-redux-kernels-edition": 4,
+        "leaf-classification": 1,
+        "aptos2019-blindness-detection": 2
+      },
+      "staged_condition_c": {
+        "n_distinct_docs": 24,
+        "internal_similarity": 0.6101,
+        "distinct_techniques": 21,
+        "top_source_share": 0.375,
+        "source_task_types": {
+          "unlabeled": 24
+        },
+        "source_competitions": {
+          "leaf-classification": 2,
+          "dogs-vs-cats-redux-kernels-edition": 3,
+          "new-york-city-taxi-fare-prediction": 9,
+          "tabular-playground-series-dec-2021": 4,
+          "aptos2019-blindness-detection": 2,
+          "plant-pathology-2020-fgvc7": 1,
+          "jigsaw-toxic-comment-classification-challenge": 2,
+          "siim-isic-melanoma-classification": 1
+        }
+      }
+    },
+    {
+      "competition_id": "dogs-vs-cats-redux-kernels-edition",
+      "query_task_type": "unlabeled",
+      "source_task_types": {
+        "unlabeled": 8,
+        "image data": 16
+      },
+      "top_source_share": 0.667,
+      "n_docs": 24,
+      "query_similarity_top": 0.5952,
+      "query_similarity_bottom": 0.5652,
+      "query_similarity_spread": 0.03,
+      "retrieved_internal_similarity": 0.7898,
+      "random_internal_similarity": 0.5201,
+      "excess_redundancy": 0.2697,
+      "distinct_techniques_retrieved": 9,
+      "distinct_techniques_random": 22,
+      "top_techniques": [
+        [
+          "convolutional",
+          24
+        ],
+        [
+          "cnn",
+          16
+        ],
+        [
+          "augmentation",
+          15
+        ],
+        [
+          "stratified",
+          7
+        ],
+        [
+          "transfer learning",
+          7
+        ],
+        [
+          "cross-validation",
+          2
+        ],
+        [
+          "ensemble",
+          1
+        ],
+        [
+          "k-fold",
+          1
+        ]
+      ],
+      "source_competitions": {
+        "dog-breed-identification": 5,
+        "aerial-cactus-identification": 16,
+        "histopathologic-cancer-detection": 3
+      },
+      "staged_condition_c": {
+        "n_distinct_docs": 24,
+        "internal_similarity": 0.7971,
+        "distinct_techniques": 10,
+        "top_source_share": 0.875,
+        "source_task_types": {
+          "image data": 21,
+          "unlabeled": 3
+        },
+        "source_competitions": {
+          "aerial-cactus-identification": 21,
+          "histopathologic-cancer-detection": 3
+        }
+      }
+    }
+  ]
+}

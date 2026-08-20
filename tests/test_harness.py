@@ -106,7 +106,7 @@ def test_render_unknown_condition_raises():
 
 
 def test_registry_latest_entry_wins(tmp_path, monkeypatch):
-    monkeypatch.setattr(registry, "RUNS_PATH", tmp_path / "runs.jsonl")
+    monkeypatch.setattr(registry, "RESULTS_DIR", tmp_path)
     registry.append_run(entry={"run_key": "k1", "status": "spec_built"})
     registry.append_run(entry={"run_key": "k1", "status": "agent_run"})
     registry.append_run(entry={"run_key": "k2", "status": "spec_built"})
@@ -117,7 +117,7 @@ def test_registry_latest_entry_wins(tmp_path, monkeypatch):
 
 def test_run_condition_end_to_end(tmp_path, monkeypatch):
     monkeypatch.setattr(artifacts, "RESULTS_DIR", tmp_path / "results")
-    monkeypatch.setattr(registry, "RUNS_PATH", tmp_path / "results" / "runs.jsonl")
+    monkeypatch.setattr(registry, "RESULTS_DIR", tmp_path / "results")
     monkeypatch.setattr(runner, "DESCRIPTIONS_DIR", tmp_path / "descriptions")
     monkeypatch.setattr(runner, "_count_tokens", lambda *, text: 42)
     monkeypatch.setitem(
@@ -154,3 +154,38 @@ def test_spec_sections_split_composes_to_render():
         parts = [sections["context"]] + ([sections["synthesis"]] if sections["synthesis"] else [])
         assert "\n\n".join(parts) + "\n" == renderer.render_spec(condition=condition, output=output)
     assert renderer.spec_sections(condition="B1", output=B1_OUTPUT)["synthesis"] == ""
+
+
+def test_registry_stage_defaults_to_dev(monkeypatch):
+    monkeypatch.delenv(registry.STAGE_ENV, raising=False)
+    assert registry.registry_path().name == "runs_dev.jsonl"
+
+
+def test_registry_stage_from_env(monkeypatch):
+    monkeypatch.setenv(registry.STAGE_ENV, "eval_v1")
+    assert registry.registry_path().name == "runs_eval_v1.jsonl"
+
+
+def test_registry_stage_resolved_per_call_not_at_import(monkeypatch):
+    """Binding the path at import would freeze whichever stage was set first."""
+    monkeypatch.setenv(registry.STAGE_ENV, "eval_v1")
+    first = registry.registry_path()
+    monkeypatch.setenv(registry.STAGE_ENV, "eval_v1_5")
+    assert registry.registry_path() != first
+
+
+def test_registry_stages_are_isolated(tmp_path, monkeypatch):
+    """A run_key written in one stage must not be visible from another.
+
+    run_key carries no corpus identifier, so this isolation is what prevents a
+    stale row merging into a later generation's analysis.
+    """
+    monkeypatch.setattr(registry, "RESULTS_DIR", tmp_path)
+    monkeypatch.setenv(registry.STAGE_ENV, "dev")
+    registry.append_run(entry={"run_key": "comp_B2_0", "status": "spec_built", "spec_tokens": 1})
+    monkeypatch.setenv(registry.STAGE_ENV, "eval_v1")
+    assert registry.load_runs() == {}
+    registry.append_run(entry={"run_key": "comp_B2_0", "status": "graded", "spec_tokens": 2})
+
+    assert registry.load_runs(stage="dev")["comp_B2_0"]["spec_tokens"] == 1
+    assert registry.load_runs(stage="eval_v1")["comp_B2_0"]["spec_tokens"] == 2

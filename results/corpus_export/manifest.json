@@ -1,0 +1,14 @@
+{
+  "collection": "notebook_summaries",
+  "documents": 25633,
+  "competitions": 580,
+  "summary_models": [
+    "claude-haiku-4-5-20251001"
+  ],
+  "embedding_model": "voyage-4-large",
+  "documents_with_score": 25633,
+  "min_kaggle_score": 1e-05,
+  "export_sha256": "8ab2922f236c163fadb1b35d1e670de2235161e07712c21fe7e078c53c7de86b",
+  "export_bytes": 19041002,
+  "exported_at": "2026-08-20T21:52:08.144051+00:00"
+}

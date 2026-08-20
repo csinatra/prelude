@@ -1,9 +1,10 @@
 """Run-artifact preservation — required input for post-run mechanistic analysis.
 
-Layout (results/ is gitignored during dev; flipped to committed for final
-eval outputs):
+Layout — one tree per experiment stage, matching the per-stage registry in
+harness/registry.py. Testing stages stay local and unpublished; the eval stage
+is the results dataset and is version-controlled:
 
-    results/{competition_id}_{condition}_{seed}/
+    results/{stage}/{competition_id}_{condition}_{seed}/
     ├── spec.md            # injected specification/context artifact (all conditions)
     ├── retrievals.json    # every retrieval call: doc IDs + similarities
     ├── pipeline_output.json  # full condition output (state / advice / flags)
@@ -35,7 +36,22 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+from harness.registry import active_stage
+from ingest.export_corpus import fingerprint as corpus_fingerprint
+
 RESULTS_DIR = Path("results")
+
+
+def run_root() -> Path:
+    """Artifacts live under the active stage, beside that stage's registry.
+
+    run_key is not unique across experiment stages — a run rebuilt against a new
+    corpus reuses its predecessor's key — so an unstaged path would let an eval
+    run silently overwrite the testing artifacts already there. Same reasoning as
+    the per-stage registry in harness/registry.py, and it must resolve the stage
+    the same way or a registry row's spec_path would not point at its spec.
+    """
+    return RESULTS_DIR / active_stage()
 
 
 def _git_provenance() -> dict:
@@ -69,7 +85,7 @@ def save_artifacts(
     trajectory_path: Path | None = None,
 ) -> Path:
     """Persist one run's artifacts; returns the run directory."""
-    run_dir = RESULTS_DIR / run_key(competition_id=competition_id, condition=condition, seed=seed)
+    run_dir = run_root() / run_key(competition_id=competition_id, condition=condition, seed=seed)
     run_dir.mkdir(parents=True, exist_ok=True)
     manifest = {
         "competition_id": competition_id,
@@ -78,6 +94,8 @@ def save_artifacts(
         **_git_provenance(),
         "llm_provider": os.environ.get("LLM_PROVIDER", "anthropic"),
         "model": os.environ.get("MODEL"),
+        "stage": active_stage(),
+        **corpus_fingerprint(),
         "saved_at": datetime.now(tz=timezone.utc).isoformat(),
     }
     (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
@@ -108,7 +126,7 @@ def preserve_agent_outputs(
     spec-side artifacts to seed it. Best-effort per file: a missing optional
     output (e.g. a buggy run with no submission) still preserves the rest.
     """
-    run_dir = RESULTS_DIR / run_key
+    run_dir = run_root() / run_key
     run_dir.mkdir(parents=True, exist_ok=True)
     named = {
         "submission.csv": submission_path,
