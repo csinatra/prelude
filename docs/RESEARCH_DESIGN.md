@@ -420,10 +420,7 @@ Design notes:
   critical weighting of retrieved evidence has something to do. Whether the
   tutorial concentration actually dominates top-k is a retrieval question, and
   is reported by the diversity characterization rather than assumed either way.
-- **Superseded expansion plans.** MLEModernizer was evaluated and rejected as a
-  source (same content universe, 79 competitions, 107 GB; see DECISIONS.md
-  2026-08-11). Unfiltered full Code4ML was rejected in favour of the score
-  filter.
+  Sources evaluated and not adopted are recorded in DECISIONS.md (2026-08-11).
 - **Leave-one-out:** every retrieval carries
   `competition_id != current_competition`, enforced inside the retrieval
   seam (`pipeline/retriever.py`); retrieval is over notebook summaries and
@@ -651,29 +648,16 @@ contribution, and retrieval-grounded fraction (non-empty
   and reported, split into retrieved-block and synthesis-artifact tokens, so
   "more retrieved knowledge" stays distinguishable from "structured
   restatement of the same knowledge."
-  - *Similarity threshold: open, pending re-calibration.* `SIMILARITY_THRESHOLD`
-    is `None` in the current code, so budgets bound quantity and top-k rank
-    ordering supplies quality control. This value is **not yet settled for
-    eval runs.** The 2026-07-15 sweep that originally justified it
-    (`analysis/calibration.py`, `results/calibration/`) was run against the
-    retired code-chunk corpus under `voyage-code-3`. Both the retrieval
-    representation and the embedding model changed on 2026-08-03, and
-    thresholds are corpus-relative, so that result no longer transfers. The
-    sweep must be re-run on the rebuilt summary corpus before the first eval
-    run, and the outcome recorded as a dated pre-run decision.
-  - *What the earlier sweep found, as prior context.* Stage-directed queries
-    scored about 0.06 lower than the flat query against the identical
-    collection, attributed to query impoverishment (short keyword queries
-    against full-description queries) rather than a text/code modality gap.
-    If that asymmetry reappears on the summary corpus, a global cutoff would
-    again filter the staged conditions harder than flat retrieval and break
-    knowledge parity, which is the specific failure mode the re-run needs to
-    check for.
+  - *No similarity threshold.* `SIMILARITY_THRESHOLD` is `None`: top-k rank
+    ordering supplies quality control, because per-competition similarity ranges
+    differ too widely (~0.47–0.59 on the current corpus) for any global cutoff
+    to mean the same thing across competitions. Settled pre-run; history and
+    evidence in DECISIONS.md (2026-08-11, 2026-08-17).
   - *Revisit triggers.* Evidence of junk retrievals in run inspection, for
-    which `analysis/retrieval_audit.py` is the pre-run firing mechanism, then
-    tail-relevance judging and per-kind quantile floors derived by a uniform
-    documented rule. Corpus expansion triggers a re-run for the same
-    corpus-relative reason.
+    which `analysis/retrieval_audit.py` is the firing mechanism. A cutoff would
+    also have to preserve knowledge parity: if staged queries score
+    systematically below flat ones, a global floor filters the staged conditions
+    harder than B and breaks the budget match.
   - *External corroboration for bounding quantity.* DS-Agent's hyperparameter
     sweep found retrieval performance *declining* past a single retrieved case
     (their Figure 6b), independent evidence that naive volume increases can

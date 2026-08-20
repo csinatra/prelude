@@ -93,7 +93,8 @@ pytest tests/ -q                       # run all tests (LLM + retrieval mocked)
 python -m pipeline.toy                 # toy two-stage smoke pipeline
 python -m harness.runner --competition spooky-author-identification \
     --condition C2 --seed 0            # one condition on one competition
-python -m analysis.calibration        # threshold sweep (APPROVAL REQUIRED)
+python -m analysis.calibration        # threshold sweep — RETIRED, see RESEARCH_DESIGN
+                                      #   (still gated if ever run: LLM calls)
 python -m ingest.download             # corpus downloads (APPROVAL REQUIRED)
 python -m ingest.ingest_metadata      # Chroma writes  (APPROVAL REQUIRED)
 python -m ingest.ingest_notebooks     # Chroma writes  (APPROVAL REQUIRED)
@@ -277,37 +278,40 @@ Haiku). Embedding model switched to `voyage-4-large` (general-purpose fits the
 now NL↔NL retrieval); batch-mode summary ingest built (`ingest_summaries
 --batch`, Message Batches API).
 
-Spec-side harness working: per-condition spec.md renderer, append-only
-runs.jsonl registry, per-run artifacts with provenance + usage ledger.
-SIMILARITY_THRESHOLD=None for v1. Cloud-box verified end-to-end (2026-07-24):
-box provisioned, smoke run GREEN (Haiku → valid graded submission), B/C spec
-injection confirmed via the PRELUDE_SPEC_PATH mount.
+Spec-side harness working: per-condition spec.md renderer, append-only registry,
+per-run artifacts with provenance + usage ledger. Runs are isolated by
+experiment stage (`PRELUDE_REGISTRY_STAGE`, default `dev`) — see
+[docs/DATA.md](docs/DATA.md) for the publish boundary. Cloud-box verified
+end-to-end (2026-07-24): box provisioned, smoke run GREEN (Haiku → valid graded
+submission), B/C spec injection confirmed via the PRELUDE_SPEC_PATH mount.
 
-**Pending re-ingest:** the live ChromaDB store still holds the old voyage-code-3
-summaries — the new prompt + voyage-4-large take effect only after
-`ingest_metadata --rebuild` + `ingest_summaries --rebuild` (dev Lite-22 first;
-`practitioner_knowledge` to be dropped), after which the pipeline is re-verified
-end-to-end. History: [docs/PROGRESS.md](docs/PROGRESS.md).
+**Corpus rebuilt 2026-08-17** at eval scale: score-filtered Code4ML, 25,633
+summaries over 580 competitions, new prompt, `voyage-4-large`, zero batch errors.
+Exported with a SHA-256 fingerprint (`ingest.export_corpus`) that every run
+manifest records. Retrieval re-characterized on it; `SIMILARITY_THRESHOLD` stays
+`None` — per-competition medians span ~0.47–0.59, so no global cutoff is
+meaningful and the threshold sweep is retired rather than re-run.
+History: [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Next
-1. Re-ingest the dev corpus under the new prompt + `voyage-4-large`
-   (`ingest_metadata --rebuild`, `ingest_summaries --rebuild`; drop
-   `practitioner_knowledge`), then re-verify the pipeline end-to-end.
-2. Re-run the `SIMILARITY_THRESHOLD` calibration before eval runs — thresholds
-   are corpus-relative and both the retrieval representation (summary unit) and
-   the embedding model changed (currently `None` for v1).
-3. Cloud-box harness: spec injection and a single-run smoke are verified
+1. Re-verify the pipeline end-to-end against the rebuilt corpus — the conditions
+   have not been run since the ingest.
+2. Cloud-box harness: spec injection and a single-run smoke are verified
    (2026-07-24). Remaining: exercise the automated batch drain end-to-end, since
    the grade-via-JSONL and journal-metric seams are still unexercised on a real
    multi-run. Spec generation stays local (DECISIONS.md 2026-08-11 reverses the
    earlier all-cloud plan), so specs are built and inspected in one batch, then
-   synced to the box with the registry rows before draining.
-4. Corpus scale-up to full Code4ML via `ingest.ingest_summaries --batch` (built),
-   then size MLEModernizer after opening the tarball on the cloud box (unit count
-   + native-abstract check first). Re-calibrate after any expansion.
+   synced to the box with the registry rows before draining. Both machines must
+   share `PRELUDE_REGISTRY_STAGE`.
+3. AIDE budget calibration: confirm a step budget generous enough to show a
+   convergence curve rather than merely a valid submission. Load-bearing for H3,
+   and for H1 floor effects.
+4. Pre-register the eval subset and seed list in DECISIONS.md on stated
+   criteria, noting that retrieval properties were already known when pinning.
 5. Eval runs per RESEARCH_DESIGN.md (B1/B2/C1-pilot/C2 on the POC-scope Lite
    subset × 3 seeds, Sonnet) + mechanistic judging via analysis/judge.py against
-   the frozen rubric.
+   the frozen rubric, with the blinded human anchor (docs/JUDGE_VALIDATION.md)
+   run before the mechanistic writeup.
 
 ## Out of scope (don't propose these unprompted)
 
