@@ -270,14 +270,40 @@ pipeline/
 ├── embeddings.py             # embed() — voyage-4-large, single embedding seam
 └── toy.py                     # two-stage smoke pipeline, Anthropic-only
 
-ingest/      # offline corpus build: download, chunking, three ingestion scripts
-analysis/    # post-run scaffold: flag judge (frozen rubric), artifact preservation
-docs/        # RESEARCH_DESIGN.md, JUDGE_RUBRIC.md (frozen), COST_ESTIMATE.md
+ingest/      # offline corpus build: download, chunking, ingestion, corpus export
+analysis/    # post-run: flag judge (frozen rubric), paired stats, retrieval characterization
+docs/        # design, decisions, rubric, data handling, runbook — see below
 tests/       # pytest — unit + smoke; no real API calls (LLM + retrieval mocked)
 notebooks/   # exploratory + analysis
 data/        # raw downloads + ChromaDB store (gitignored)
-results/     # run artifacts keyed {competition}_{condition}_{seed} (gitignored during dev)
+results/     # per experiment stage: runs_{stage}.jsonl + {stage}/{run_key}/ (see docs/DATA.md)
 ```
+
+## Documentation
+
+**Understand the experiment** — [RESEARCH_DESIGN.md](docs/RESEARCH_DESIGN.md):
+research questions, the condition grid, the staged pipeline, and a worked example
+of all four injected artifacts on one competition. Then
+[CORPUS_SAMPLES.md](docs/CORPUS_SAMPLES.md) for what retrieved documents actually
+look like.
+
+**Evaluate the claims** — RESEARCH_DESIGN's *Outcome metrics* (what is measured,
+and the pre-registered separation criterion) and *Threats to validity* (each
+limitation labelled structural or POC-scale), then
+[JUDGE_RUBRIC.md](docs/JUDGE_RUBRIC.md) — **frozen, do not edit** — and
+[JUDGE_VALIDATION.md](docs/JUDGE_VALIDATION.md) for the blinded human anchor.
+
+**Check why something is the way it is** — [DECISIONS.md](docs/DECISIONS.md), the
+dated append-only audit trail including rejected alternatives. The design doc
+describes the current design; this records how it got there.
+
+**Reproduce or re-run** — [DATA.md](docs/DATA.md) for what is published and the
+corpus fingerprint, [RUNBOOK.md](docs/RUNBOOK.md) for the two-machine workflow,
+[COST_ESTIMATE.md](docs/COST_ESTIMATE.md) for what a round costs.
+[PROGRESS.md](docs/PROGRESS.md) is milestone history.
+
+Working on the code rather than reading about it: [CLAUDE.md](CLAUDE.md) is the
+operating brief — constraints, layout, and the approval-gated commands.
 
 ## Tests
 
