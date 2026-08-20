@@ -7,27 +7,17 @@ This document states the **current design** and the limitations bounding its
 claims. How the design got here — dated changes and rejected alternatives —
 is in [DECISIONS.md](DECISIONS.md).
 
-**Reading paths.** To understand the design, read
-[Experimental design](#experimental-design) and
-[Illustrative output](#illustrative-output) — the condition grid and a worked
-example carry most of it. To evaluate the claims, read
-[Outcome metrics](#outcome-metrics-defined-in-advance) and
-[Threats to validity](#threats-to-validity).
-
-- [Research question and hypothesis](#research-question-and-hypothesis) —
-  H1/H2/H3, and [what v1 establishes](#what-v1-establishes-and-what-it-does-not)
+- [Research question and hypothesis](#research-question-and-hypothesis)
+  - [What v1 establishes, and what it does not](#what-v1-establishes-and-what-it-does-not)
 - [Related work positioning](#related-work-positioning)
 - [System overview](#system-overview)
-- [Experimental design](#experimental-design) — the 2×3 condition grid, the
-  [staged pipeline](#staged-pipeline--queries-prompts-schemas), and an
-  [illustrative output](#illustrative-output) across all four conditions
-- [Corpus construction](#corpus-construction) — sources, document classes,
-  composition, leave-one-out
-- [Outcome metrics](#outcome-metrics-defined-in-advance) — measures, the
-  pre-registered analysis plan, and the two-sided ledger
+- [Experimental design](#experimental-design)
+  - [Staged pipeline](#staged-pipeline--queries-prompts-schemas)
+  - [Illustrative output](#illustrative-output)
+- [Corpus construction](#corpus-construction)
+- [Outcome metrics](#outcome-metrics-defined-in-advance)
 - [Mechanistic evaluation](#mechanistic-evaluation)
-- [Threats to validity](#threats-to-validity) — each labelled structural or
-  POC-scale
+- [Threats to validity](#threats-to-validity)
 - [Roadmap](#roadmap)
 - [Amendments](#amendments)
 

@@ -3,10 +3,27 @@
 Structured problem specification before agentic execution begins — a research
 POC on LLM-assisted problem framing for ML engineering.
 
-> **Status (2026-08-03):** pipeline architecture and experimental design
+> **Status (2026-08-17):** pipeline architecture and experimental design
 > complete (B1 / B2 / C1 / C2, summary-level staged retrieval, mechanistic-analysis
-> scaffold). AIDE injection path confirmed end-to-end via smoke run.
+> scaffold). AIDE injection path confirmed end-to-end via smoke run. Corpus
+> rebuilt at eval scale — 25,633 practitioner summaries over 580 competitions —
+> and retrieval characterized against it.
 > **Evaluation runs not yet executed.**
+
+- [Motivation](#motivation)
+- [Research question](#research-question)
+- [Conditions](#conditions)
+- [Pipeline](#pipeline--four-stages-with-explicit-intermediate-outputs)
+- [Corpus and retrieval](#corpus-and-retrieval)
+- [Related work](#related-work)
+- [Stack](#stack)
+- [Architecture](#architecture)
+- [Setup](#setup)
+- [Run the toy pipeline](#run-the-toy-pipeline)
+- [Run the full pipeline](#run-the-full-pipeline)
+- [Layout](#layout)
+- [Documentation](#documentation)
+- [Tests](#tests)
 
 ## Motivation
 
@@ -281,29 +298,16 @@ results/     # per experiment stage: runs_{stage}.jsonl + {stage}/{run_key}/ (se
 
 ## Documentation
 
-**Understand the experiment** — [RESEARCH_DESIGN.md](docs/RESEARCH_DESIGN.md):
-research questions, the condition grid, the staged pipeline, and a worked example
-of all four injected artifacts on one competition. Then
-[CORPUS_SAMPLES.md](docs/CORPUS_SAMPLES.md) for what retrieved documents actually
-look like.
-
-**Evaluate the claims** — RESEARCH_DESIGN's *Outcome metrics* (what is measured,
-and the pre-registered separation criterion) and *Threats to validity* (each
-limitation labelled structural or POC-scale), then
-[JUDGE_RUBRIC.md](docs/JUDGE_RUBRIC.md) — **frozen, do not edit** — and
-[JUDGE_VALIDATION.md](docs/JUDGE_VALIDATION.md) for the blinded human anchor.
-
-**Check why something is the way it is** — [DECISIONS.md](docs/DECISIONS.md), the
-dated append-only audit trail including rejected alternatives. The design doc
-describes the current design; this records how it got there.
-
-**Reproduce or re-run** — [DATA.md](docs/DATA.md) for what is published and the
-corpus fingerprint, [RUNBOOK.md](docs/RUNBOOK.md) for the two-machine workflow,
-[COST_ESTIMATE.md](docs/COST_ESTIMATE.md) for what a round costs.
-[PROGRESS.md](docs/PROGRESS.md) is milestone history.
-
-Working on the code rather than reading about it: [CLAUDE.md](CLAUDE.md) is the
-operating brief — constraints, layout, and the approval-gated commands.
+- [RESEARCH_DESIGN.md](docs/RESEARCH_DESIGN.md) — the experiment
+- [DECISIONS.md](docs/DECISIONS.md) — dated audit trail, append-only
+- [JUDGE_RUBRIC.md](docs/JUDGE_RUBRIC.md) — **frozen, do not edit**
+- [JUDGE_VALIDATION.md](docs/JUDGE_VALIDATION.md) — blinded human anchor on the judge
+- [CORPUS_SAMPLES.md](docs/CORPUS_SAMPLES.md) — a sample of each document class
+- [DATA.md](docs/DATA.md) — what is published, and the corpus fingerprint
+- [RUNBOOK.md](docs/RUNBOOK.md) — two-machine operational workflow
+- [COST_ESTIMATE.md](docs/COST_ESTIMATE.md)
+- [PROGRESS.md](docs/PROGRESS.md) — milestone history
+- [CLAUDE.md](CLAUDE.md) — operating brief for working in the repo
 
 ## Tests
 
