@@ -40,6 +40,7 @@ Run: PYTHONPATH=. .venv/bin/python -m analysis.retrieval_diversity \
 
 import argparse
 import json
+import os
 import random
 from datetime import datetime, timezone
 from pathlib import Path
@@ -233,6 +234,12 @@ def main(*, competitions: list[str], out_path: Path | None, staged: bool = True)
             "collection_count": collection.count(),
             "k": BASELINE_N_NOTEBOOKS,
             "random_seed": RANDOM_SEED,
+            # Condition C's staged results depend on this: parse_problem's output
+            # builds the three stage queries, so a different parse model retrieves
+            # a different set. B's flat pass queries the raw description and is
+            # model-independent. Without this field, two passes that differ only
+            # by model are indistinguishable.
+            "parse_model": os.environ.get("MODEL"),
             "measured_at": datetime.now(tz=timezone.utc).isoformat(),
         },
         "staged_comparison": staged,

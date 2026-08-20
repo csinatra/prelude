@@ -1,0 +1,239 @@
+{
+  "provenance": {
+    "embed_model": "voyage-4-large",
+    "collection": "notebook_summaries",
+    "collection_count": 25633,
+    "k": 24,
+    "random_seed": 0,
+    "parse_model": "claude-haiku-4-5-20251001",
+    "measured_at": "2026-08-20T22:19:24.365603+00:00"
+  },
+  "staged_comparison": true,
+  "results": [
+    {
+      "competition_id": "spooky-author-identification",
+      "query_task_type": "unlabeled",
+      "source_task_types": {
+        "unlabeled": 24
+      },
+      "top_source_share": 0.5,
+      "n_docs": 24,
+      "query_similarity_top": 0.5745,
+      "query_similarity_bottom": 0.5057,
+      "query_similarity_spread": 0.0688,
+      "retrieved_internal_similarity": 0.7421,
+      "random_internal_similarity": 0.4572,
+      "excess_redundancy": 0.285,
+      "distinct_techniques_retrieved": 15,
+      "distinct_techniques_random": 25,
+      "top_techniques": [
+        [
+          "logistic regression",
+          19
+        ],
+        [
+          "tf-idf",
+          18
+        ],
+        [
+          "cross-validation",
+          17
+        ],
+        [
+          "naive bayes",
+          12
+        ],
+        [
+          "tfidf",
+          4
+        ],
+        [
+          "ensemble",
+          4
+        ],
+        [
+          "random forest",
+          3
+        ],
+        [
+          "stacking",
+          2
+        ]
+      ],
+      "source_competitions": {
+        "jigsaw-toxic-comment-classification-challenge": 12,
+        "edsa-mbti": 5,
+        "movie-review-sentiment-analysis-kernels-only": 1,
+        "jigsaw-multilingual-toxic-comment-classification": 1,
+        "sona-speeches": 3,
+        "feedback-prize-2021": 1,
+        "donorschoose-application-screening": 1
+      },
+      "staged_condition_c": {
+        "n_distinct_docs": 24,
+        "internal_similarity": 0.716,
+        "distinct_techniques": 19,
+        "top_source_share": 0.458,
+        "source_task_types": {
+          "unlabeled": 23,
+          "text data": 1
+        },
+        "source_competitions": {
+          "jigsaw-toxic-comment-classification-challenge": 11,
+          "bad-comments": 1,
+          "edsa-mbti": 3,
+          "quora-insincere-questions-classification": 6,
+          "sona-speeches": 2,
+          "google-quest-challenge": 1
+        }
+      }
+    },
+    {
+      "competition_id": "nomad2018-predict-transparent-conductors",
+      "query_task_type": "unlabeled",
+      "source_task_types": {
+        "unlabeled": 24
+      },
+      "top_source_share": 1.0,
+      "n_docs": 24,
+      "query_similarity_top": 0.5249,
+      "query_similarity_bottom": 0.4945,
+      "query_similarity_spread": 0.0304,
+      "retrieved_internal_similarity": 0.8456,
+      "random_internal_similarity": 0.474,
+      "excess_redundancy": 0.3716,
+      "distinct_techniques_retrieved": 9,
+      "distinct_techniques_random": 22,
+      "top_techniques": [
+        [
+          "lightgbm",
+          16
+        ],
+        [
+          "cross-validation",
+          16
+        ],
+        [
+          "stratified",
+          11
+        ],
+        [
+          "gradient boosting",
+          10
+        ],
+        [
+          "random forest",
+          3
+        ],
+        [
+          "embedding",
+          3
+        ],
+        [
+          "ensemble",
+          3
+        ],
+        [
+          "k-fold",
+          1
+        ]
+      ],
+      "source_competitions": {
+        "champs-scalar-coupling": 24
+      },
+      "staged_condition_c": {
+        "n_distinct_docs": 24,
+        "internal_similarity": 0.6802,
+        "distinct_techniques": 9,
+        "top_source_share": 0.375,
+        "source_task_types": {
+          "unlabeled": 24
+        },
+        "source_competitions": {
+          "stanford-covid-vaccine": 1,
+          "trends-assessment-prediction": 7,
+          "santander-value-prediction-challenge": 4,
+          "riiid-test-answer-prediction": 1,
+          "house-prices-advanced-regression-techniques": 1,
+          "tabular-playground-series-jul-2021": 9,
+          "lish-moa": 1
+        }
+      }
+    },
+    {
+      "competition_id": "dogs-vs-cats-redux-kernels-edition",
+      "query_task_type": "unlabeled",
+      "source_task_types": {
+        "image data": 11,
+        "unlabeled": 13
+      },
+      "top_source_share": 0.458,
+      "n_docs": 24,
+      "query_similarity_top": 0.5939,
+      "query_similarity_bottom": 0.5729,
+      "query_similarity_spread": 0.021,
+      "retrieved_internal_similarity": 0.757,
+      "random_internal_similarity": 0.4724,
+      "excess_redundancy": 0.2847,
+      "distinct_techniques_retrieved": 9,
+      "distinct_techniques_random": 26,
+      "top_techniques": [
+        [
+          "convolutional",
+          23
+        ],
+        [
+          "augmentation",
+          14
+        ],
+        [
+          "cnn",
+          13
+        ],
+        [
+          "transfer learning",
+          13
+        ],
+        [
+          "cross-validation",
+          5
+        ],
+        [
+          "stratified",
+          3
+        ],
+        [
+          "ensemble",
+          2
+        ],
+        [
+          "random forest",
+          1
+        ]
+      ],
+      "source_competitions": {
+        "aerial-cactus-identification": 11,
+        "dog-breed-identification": 6,
+        "petfinder-pawpularity-score": 4,
+        "petfinder-adoption-prediction": 2,
+        "histopathologic-cancer-detection": 1
+      },
+      "staged_condition_c": {
+        "n_distinct_docs": 24,
+        "internal_similarity": 0.7258,
+        "distinct_techniques": 12,
+        "top_source_share": 0.667,
+        "source_task_types": {
+          "unlabeled": 8,
+          "image data": 16
+        },
+        "source_competitions": {
+          "padhai-module1-level4a": 2,
+          "aerial-cactus-identification": 16,
+          "padhai-module1-level4b": 5,
+          "padhai-module1-level2": 1
+        }
+      }
+    }
+  ]
+}

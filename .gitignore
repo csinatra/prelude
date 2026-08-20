@@ -24,9 +24,11 @@ results/eval_*/**/trajectory.log
 results/corpus_export/*
 !results/corpus_export/manifest.json
 # Corpus characterization, cited by DECISIONS.md as evidence for design choices.
-!results/retrieval_audit.md
-!results/retrieval_diversity.json
-!results/summary_prompt_validation.json
+# Globbed: passes are suffixed by parse model (…_haiku, …_sonnet) and the
+# unsuffixed files are the pre-expansion baseline.
+!results/retrieval_audit*.md
+!results/retrieval_diversity*.json
+!results/summary_prompt_validation*.json
 
 data/
 
