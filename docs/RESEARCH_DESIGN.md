@@ -331,7 +331,7 @@ Design notes:
   from this: they use the 8-step `dev` variant on a held-out off-eval
   competition and are throwaway integration checks, **not** matched-A data
   points — the dev budget is too short to be a valid A run. The core
-  research question (structured decomposition + directed retrieval vs naive
+  research question (structured reasoning + directed retrieval vs naive
   provision) is carried by the B/C contrasts and does not require A.
 - **Retrieval unit held constant.** All conditions receive practitioner
   knowledge as **notebook summaries** (one LLM abstract per notebook) plus

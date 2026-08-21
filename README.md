@@ -1,14 +1,15 @@
 # Prelude
 
-Structured problem specification before agentic execution begins — a research
-POC on LLM-assisted problem framing for ML engineering.
+A research POC on how structured specification, built from retrieved practitioner knowledge, affects agentic execution in ML engineering.
 
 > **Status (2026-08-17):** pipeline architecture and experimental design
 > complete (B1 / B2 / C1 / C2, summary-level staged retrieval, mechanistic-analysis
 > scaffold). AIDE injection path confirmed end-to-end via smoke run. Corpus
-> rebuilt at eval scale — 25,633 practitioner summaries over 580 competitions —
+> rebuilt at eval scale (25,633 practitioner summaries over 580 competitions),
 > and retrieval characterized against it.
 > **Evaluation runs not yet executed.**
+
+## Contents
 
 - [Motivation](#motivation)
 - [Research question](#research-question)
@@ -29,9 +30,11 @@ POC on LLM-assisted problem framing for ML engineering.
 
 Before an agent writes a line of code, a human expert does the part that's hardest to automate: they frame the problem. As agentic systems take on more of the work between a stated goal and a finished result, more of what determines success sits upstream of execution. Translating an ambiguous goal into something verifiable is a critical first step to building any solution, starting with the basic question of what the core problem actually is and what would count as a good answer.
 
-Problem framing draws on things that don't show up cleanly in a task description. Things like institutional precedent, awareness of failure modes and implicit assumptions, judgment about what a metric actually needs to capture, and constraints that live outside the immediate problem statement. People with domain expertise supply this instinctively. Often that means rounds of conversation with collaborators and senior colleagues, testing an idea against people who have seen adjacent problems, before ever committing to a direction. An agentic system has significant knowledge baked into its parameters, but applying that knowledge to a specific problem still takes direction. Something has to point it at the right context, the right failure modes, the right constraints. Left on its own, a system may land on an idea that's sound in principle but just doesn't fit the actual constraints of the problem, the deployment environment, the data limitations, the infrastructure already in place. That's the gap between a research implementation and one that survives production.
+Problem framing draws on things that don't show up cleanly in a task description. Things like institutional precedent, awareness of failure modes and implicit assumptions, judgment about what a metric actually needs to capture, and constraints that live outside the immediate problem statement. People with domain expertise supply this instinctively. Before ever committing to a direction, practitioners test an idea through rounds of conversation with collaborators and senior colleagues who have seen adjacent problems. An agentic system has significant knowledge baked into its parameters, but applying that knowledge to a specific problem still takes direction. Something has to point it at the right context, the right failure modes, the right constraints. What a practitioner gets from those conversations has to be retrieved from the record other practitioners left behind. Left on its own, a system may land on an idea that's sound in principle but just doesn't fit the problem as it actually is, given the deployment environment, the data limitations, the infrastructure already in place. That's the gap between a research implementation and one that survives production.
 
-That gap, between stating a goal and understanding a problem well enough to act on it, is the space this project explores. The underlying capabilities apply more broadly to any LLM-based system working through a complex task. That means decomposing an ambiguous problem into its core elements, understanding what knowledge is actually needed against what's available, and reasoning critically across all of that to arrive at a solution. This project starts with a narrower focus, testing whether structure helps in one measurable domain, on the premise that in the context of ML engineering, the gap is concrete and easier to see.
+Upstream of that sits another gap, between stating a goal and having a specification complete enough to reach the intended result. That is the space this project explores.
+
+Any LLM-based system working through a complex task needs the same thing, a specification that captures the full scope of the desired outcome. Producing one means decomposing an ambiguous problem into its core elements, matching what knowledge is needed against what's available, and reasoning critically across those dimensions. This project starts with a narrower focus, testing whether structure helps in one verifiable domain, on the premise that, in the context of ML engineering, the gap is concrete and easier to measure.
 
 ## Research question
 
@@ -300,12 +303,12 @@ results/     # per experiment stage: runs_{stage}.jsonl + {stage}/{run_key}/ (se
 
 - [RESEARCH_DESIGN.md](docs/RESEARCH_DESIGN.md) — the experiment
 - [DECISIONS.md](docs/DECISIONS.md) — dated audit trail, append-only
-- [JUDGE_RUBRIC.md](docs/JUDGE_RUBRIC.md) — **frozen, do not edit**
+- [JUDGE_RUBRIC.md](docs/JUDGE_RUBRIC.md) — per-flag judging criteria, **frozen, do not edit**
 - [JUDGE_VALIDATION.md](docs/JUDGE_VALIDATION.md) — blinded human anchor on the judge
 - [CORPUS_SAMPLES.md](docs/CORPUS_SAMPLES.md) — a sample of each document class
 - [DATA.md](docs/DATA.md) — what is published, and the corpus fingerprint
 - [RUNBOOK.md](docs/RUNBOOK.md) — two-machine operational workflow
-- [COST_ESTIMATE.md](docs/COST_ESTIMATE.md)
+- [COST_ESTIMATE.md](docs/COST_ESTIMATE.md) — corpus and eval spend, by slice
 - [PROGRESS.md](docs/PROGRESS.md) — milestone history
 - [CLAUDE.md](CLAUDE.md) — operating brief for working in the repo
 
