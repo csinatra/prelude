@@ -6,5 +6,31 @@
 __pycache__/
 *.pyc
 .langsmith/
-results/
+# Research data policy (docs/DATA.md). Exploratory/testing runs stay local and
+# unpublished; the eval stage IS the results dataset and is version-controlled.
+# `results/*` not `results/` — git cannot descend into an excluded directory, so
+# a trailing-slash pattern would make every negation below unreachable.
+results/*
+!results/runs_eval_*.jsonl
+!results/eval_*/
+# Bulk agent outputs: large, and their information already lives in the registry
+# (metrics) and in the judged artifacts (journal, solution).
+results/eval_*/**/submission.csv
+results/eval_*/**/trajectory.log
+# Corpus provenance: the manifest is the citable fingerprint and is tracked; the
+# 18 MB export is deposited separately (Git LFS or Zenodo, decided at writeup
+# time) and referenced by its SHA-256.
+!results/corpus_export/
+results/corpus_export/*
+!results/corpus_export/manifest.json
+# Corpus characterization, cited by DECISIONS.md as evidence for design choices.
+# Globbed: passes are suffixed by parse model (…_haiku, …_sonnet) and the
+# unsuffixed files are the pre-expansion baseline.
+!results/retrieval_audit*.md
+!results/retrieval_diversity*.json
+!results/summary_prompt_validation*.json
+
 data/
+
+# macOS
+.DS_Store

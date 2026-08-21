@@ -1,8 +1,12 @@
 """Build the notebook_summaries collection — the practitioner-knowledge retrieval unit.
 
-One record per unique kaggle_id in the Lite-22 code-block slice: gather the
+One record per unique kaggle_id in the selected code-block slice: gather the
 notebook's blocks, generate an LLM abstract of its approach, embed the abstract
 with Voyage, store with {kaggle_id, competition_id, kaggle_score, summary_model}.
+
+The slice is chosen by --scope (which competitions) and --scored-only (whether
+to require evidence the notebook produced a real submission). The dev corpus is
+`--scope lite`; the eval corpus is `--scope full --scored-only`.
 
 Two generation backends:
   - default (synchronous, ThreadPoolExecutor) — fine for the dev slice.
@@ -13,6 +17,7 @@ Two generation backends:
 Resumable either way: kaggle_ids already in the collection are skipped.
 
 Usage: python -m ingest.ingest_summaries [--limit N] [--rebuild] [--batch]
+                                         [--scope lite|full] [--scored-only]
 --limit caps how many pending notebooks this invocation summarizes (staged spends).
 --rebuild drops the collection first — REQUIRED to regenerate after a summary-
   prompt or embedding-model change, since skip-existing would otherwise leave the
@@ -33,7 +38,13 @@ from pathlib import Path
 import anthropic
 import pandas as pd
 
-from ingest.config import CHROMA_PATH, LITE_COMPETITIONS, NOTEBOOK_SUMMARIES, RAW_DIR
+from ingest.config import (
+    CHROMA_PATH,
+    CORPUS_SCOPES,
+    DEFAULT_SCOPE,
+    NOTEBOOK_SUMMARIES,
+    RAW_DIR,
+)
 from ingest.store import add_documents, drop_collection, get_collection
 from pipeline.llm_client import call_llm_text
 
@@ -69,20 +80,24 @@ SUMMARY_SYSTEM = (
     "You are an experienced ML engineer distilling a solution notebook into a knowledge-base "
     "summary, so that another engineer facing a DIFFERENT but related problem can learn from it.\n\n"
     "<task>\n"
-    "Write a compact technical abstract of the notebook's approach, emphasizing what transfers "
-    "across problems of this class over dataset-specific detail.\n"
+    "Write a compact technical abstract of what problem the notebook addresses and how the author "
+    "approached it, emphasizing what transfers across problems of this class.\n"
     "</task>\n\n"
     "<cover>\n"
-    "Where present, weave in: the modeling approach (specific estimators or architectures and "
-    "notable hyperparameter/configuration choices); feature engineering and data transformations "
-    "(name the concrete derived features or representations); the validation strategy (resampling "
-    "scheme and target metric); key preprocessing; and any distinctive or failure-mode-avoiding "
-    "techniques. Prefer a few reusable specifics over exhaustive coverage.\n"
+    "Cover what the notebook actually shows: the problem it addresses, the choices the author "
+    "made, and why they made them. Be concrete where the notebook is concrete — name what was "
+    "used rather than describing it in general terms, including how the work was validated: the "
+    "resampling scheme and the metric being optimized. A reader should come away knowing things "
+    "they could not have guessed from the problem statement alone.\n\n"
+    "Let the notebook set the scope: cover everything it genuinely shows, and stay silent on what "
+    "it does not. Do not infer reasoning the author did not express, and do not supply generic "
+    "best-practice advice.\n"
     "</cover>\n\n"
     "<format>\n"
     "Write in plain, flowing prose — complete sentences in a few short paragraphs. Do not use "
-    "markdown, section headers, bold or italic, or bulleted or numbered lists. Do not mention the "
-    "competition, leaderboard, or Kaggle. Let length track how much genuinely transferable insight "
+    "markdown, section headers, bold or italic, or bulleted or numbered lists. Name the data and "
+    "domain concretely, but do not frame the notebook as a contest entry — no mention of the "
+    "competition, leaderboard, Kaggle, or rankings. Let length track how much genuinely transferable insight "
     "the notebook holds, not its raw size: prioritize distinctive, reusable specifics and compress "
     "routine steps. Most summaries should land around 250-350 words; a genuinely information-dense "
     "notebook may run longer, but never pad to reach a length.\n"
@@ -90,26 +105,76 @@ SUMMARY_SYSTEM = (
 )
 
 
-def _load_notebooks() -> dict[int, dict]:
-    """Group Lite-22 code blocks by kaggle_id, preserving block order."""
-    notebooks: dict[int, dict] = {}
-    for filename in ["code_blocks_upto_20.csv", "code_blocks_21.csv"]:
+CODE_BLOCK_FILES = ["code_blocks_upto_20.csv", "code_blocks_21.csv"]
+
+
+def _read_blocks(*, columns: list[str]):
+    """Chunked reader over both code-block CSVs, projecting only `columns`."""
+    for filename in CODE_BLOCK_FILES:
         path = RAW_DIR / "code4ml" / filename
-        for frame in pd.read_csv(path, index_col=0, chunksize=100_000):
-            frame = frame[frame["data_sources"].isin(LITE_COMPETITIONS)]
-            for _, row in frame.iterrows():
-                kaggle_id = int(row["kaggle_id"])
-                entry = notebooks.setdefault(
-                    kaggle_id,
-                    {
-                        "competition_id": str(row["data_sources"]),
-                        "kaggle_score": float(row["kaggle_score"])
-                        if pd.notna(row["kaggle_score"])
-                        else None,
-                        "blocks": [],
-                    },
-                )
-                entry["blocks"].append(str(row["code_block"]))
+        # index_col=0 is the unnamed row index; usecols must name it explicitly.
+        yield from pd.read_csv(
+            path, index_col=0, usecols=["Unnamed: 0", *columns], chunksize=100_000
+        )
+
+
+def _select(*, scope: str, scored_only: bool) -> dict[int, dict]:
+    """Pass 1 — decide which notebooks qualify, reading no code text.
+
+    Selection is separated from loading because the unfiltered corpus is 107k
+    notebooks / 1.3 GB of code: materializing every notebook's blocks only to
+    discard three quarters of them would cost several GB of memory.
+
+    kaggle_score is a notebook-level attribute repeated across a notebook's
+    rows; taking the max over non-null rows tolerates ragged rows.
+    """
+    allowed = CORPUS_SCOPES[scope]
+    selected: dict[int, dict] = {}
+    for frame in _read_blocks(columns=["kaggle_id", "data_sources", "kaggle_score"]):
+        if allowed is not None:
+            frame = frame[frame["data_sources"].isin(allowed)]
+        for kaggle_id, source, score in zip(
+            frame["kaggle_id"], frame["data_sources"], frame["kaggle_score"]
+        ):
+            entry = selected.setdefault(
+                int(kaggle_id),
+                {"competition_id": str(source), "kaggle_score": None, "blocks": [], "chars": 0},
+            )
+            if pd.notna(score):
+                current = entry["kaggle_score"]
+                entry["kaggle_score"] = float(score) if current is None else max(current, float(score))
+    if scored_only:
+        # Code4ML records an unscored notebook as 0.0 or null, so a positive score
+        # is the available evidence that the notebook produced a real submission.
+        # This conflates a genuine zero with a missing one; for the metrics in this
+        # corpus (AUC, accuracy, log-loss, RMSE) an exact 0.0 is either impossible
+        # or a total failure, so the filter drops nothing worth keeping.
+        before = len(selected)
+        selected = {
+            kaggle_id: entry
+            for kaggle_id, entry in selected.items()
+            if entry["kaggle_score"] is not None and entry["kaggle_score"] > 0.0
+        }
+        print(f"score filter: {before} -> {len(selected)} notebooks")
+    return selected
+
+
+def _load_notebooks(*, scope: str, scored_only: bool) -> dict[int, dict]:
+    """Group code blocks by kaggle_id, preserving block order, for the selected scope."""
+    notebooks = _select(scope=scope, scored_only=scored_only)
+    for frame in _read_blocks(columns=["kaggle_id", "code_block"]):
+        for kaggle_id, block in zip(frame["kaggle_id"], frame["code_block"]):
+            entry = notebooks.get(int(kaggle_id))
+            if entry is None:
+                continue
+            text = str(block)
+            # Stop appending once past the cap — _notebook_text truncates to the
+            # same point, so the retained prefix is byte-identical to loading
+            # every block. `chars` keeps counting past the cap regardless, so
+            # callers can still tell how large the notebook actually was.
+            if entry["chars"] < MAX_NOTEBOOK_CHARS:
+                entry["blocks"].append(text)
+            entry["chars"] += len(text) + 2
     return notebooks
 
 
@@ -272,7 +337,8 @@ def _check_resume_matches(*, state: dict, notebooks: dict[int, dict]) -> None:
 
     The state file guards against double submission, but not against the corpus
     changing underneath an in-flight batch. If the notebook set was rebuilt or
-    re-sliced between submit and resume (a --rebuild, an ingest config change),
+    re-sliced between submit and resume (a --rebuild, a --scope or --scored-only
+    change, an ingest config change),
     the returned summaries describe notebooks that may no longer exist, and
     upserting them would silently mix generations. Stop instead.
     """
@@ -316,7 +382,14 @@ def _run_batch(*, notebooks: dict[int, dict], collection, limit: int | None) -> 
     BATCH_STATE_PATH.unlink(missing_ok=True)
 
 
-def main(*, limit: int | None = None, rebuild: bool = False, batch: bool = False) -> None:
+def main(
+    *,
+    limit: int | None = None,
+    rebuild: bool = False,
+    batch: bool = False,
+    scope: str = DEFAULT_SCOPE,
+    scored_only: bool = False,
+) -> None:
     # Bulk corpus infrastructure: thousands of LLM calls per run. Tracing each
     # one burns the LangSmith monthly trace quota (it did, 2026-07-15) and adds
     # nothing — the resumable collection + summary_model metadata are the audit
@@ -331,8 +404,12 @@ def main(*, limit: int | None = None, rebuild: bool = False, batch: bool = False
     elif rebuild and resuming:
         print("warning: --rebuild ignored — an in-flight batch is pending collection")
     collection = get_collection(name=NOTEBOOK_SUMMARIES)
-    notebooks = _load_notebooks()
-    print(f"unique notebooks in slice: {len(notebooks)}")
+    notebooks = _load_notebooks(scope=scope, scored_only=scored_only)
+    print(
+        f"scope={scope} scored_only={scored_only}: "
+        f"{len(notebooks)} notebooks across "
+        f"{len({e['competition_id'] for e in notebooks.values()})} competitions"
+    )
 
     if batch:
         _run_batch(notebooks=notebooks, collection=collection, limit=limit)
@@ -351,5 +428,22 @@ if __name__ == "__main__":
     parser.add_argument(
         "--batch", action="store_true", help="use the Message Batches API (50%% discount, async)"
     )
+    parser.add_argument(
+        "--scope",
+        choices=sorted(CORPUS_SCOPES),
+        default=DEFAULT_SCOPE,
+        help="which competitions to draw notebooks from (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--scored-only",
+        action="store_true",
+        help="keep only notebooks with a positive kaggle_score (evidence of a real submission)",
+    )
     args = parser.parse_args()
-    main(limit=args.limit, rebuild=args.rebuild, batch=args.batch)
+    main(
+        limit=args.limit,
+        rebuild=args.rebuild,
+        batch=args.batch,
+        scope=args.scope,
+        scored_only=args.scored_only,
+    )

@@ -12,7 +12,7 @@ from harness import advance, batch, registry
 def seeded_registry(tmp_path, monkeypatch):
     """Runs across two competitions, appended out of order: one graded (done),
     the rest pending, so ordering (by competition) is observable."""
-    monkeypatch.setattr(registry, "RUNS_PATH", tmp_path / "runs.jsonl")
+    monkeypatch.setattr(registry, "RESULTS_DIR", tmp_path)
     registry.append_run(entry={
         "run_key": "comp_C2_0", "competition_id": "comp", "condition": "C2",
         "seed": 0, "status": "graded", "score": 0.9,
@@ -207,7 +207,9 @@ def test_execute_run_preserves_agent_artifacts_to_volume(seeded_registry, monkey
 
     batch.execute_run(run=batch.load_runs()["comp_B2_0"], data_dir=Path("/data"))
 
-    preserved = tmp_path / "results" / "comp_B2_0"
+    # staged: agent outputs must land in the SAME stage tree the registry row
+    # points at, or spec_path and the preserved journal would disagree
+    preserved = batch.artifacts.run_root() / "comp_B2_0"
     assert (preserved / "submission.csv").exists()
     assert (preserved / "journal.json").exists()
     assert (preserved / "best_solution.py").exists()      # judge input

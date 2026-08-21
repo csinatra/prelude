@@ -47,14 +47,21 @@ if an initial result is pursued.
   so most inputs sit far below it.
 - **Dev-corpus summaries (Lite-22, 5,937 notebooks):** **~\$18** at the measured
   rate, in line with the ~\$20 actual on the original prompt (2026-07-15).
-- **Full-Code4ML expansion (~101.6k remaining notebooks):** summary *generation*
-  is the real spend, not embedding. Via the Anthropic Batch API (50% discount,
-  same pinned `SUMMARY_MODEL`, no homogeneity impact) → **~\$305–325** at the
-  measured rate, allowing for full Code4ML's slightly larger mean notebook
-  (~9.2k chars against Lite-22's ~8.7k). Revised up from the ~\$200 estimated on
-  2026-07-15 and the ~\$250–300 projected on 2026-08-03, both of which predated
-  measurement. Embedding the resulting summaries (~55–110M tokens) fits inside
-  the free grant → **~\$0**.
+- **Score-filtered Code4ML expansion — the planned corpus (measured
+  2026-08-14, counted directly off the CSVs, not estimated):** the
+  `kaggle_score > 0` filter takes Code4ML from 107,524 notebooks / 12,729
+  competitions to **25,633 notebooks / 580 competitions**, of which 220 have
+  ≥10 scored notebooks and 113 have ≥50. Capped input text totals 278 MB
+  (~79.5M tokens; the 60k-char cap binds on only 1.4%), so summary generation
+  via the Batch API is **~\$62** — with **~\$14** of that re-summarizing the
+  5,937 dev-corpus notebooks if the collection is rebuilt clean rather than
+  appended to. Embedding the resulting summaries fits inside the free grant →
+  **~\$0**. Splits into 2 batches under the 200 MB per-batch cap (15,937 +
+  9,696 requests), the first time that path engages.
+- **Unfiltered full Code4ML — rejected, kept for comparison:** all 107,524
+  notebooks would be ~267M input tokens → **~\$228**, against ~\$62 filtered.
+  Earlier estimates of ~\$200 (2026-07-15) and ~\$305–325 (2026-08-03) both
+  predated the direct count.
 - **MLEModernizer:** ingestion is cloud-box disk and bandwidth, not API cost.
   Summary cost is **not** included above and stays unsized until the tarball is
   opened on the box. Each retrieval unit needs an abstract, so either its units

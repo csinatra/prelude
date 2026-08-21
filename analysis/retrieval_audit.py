@@ -19,7 +19,7 @@ embeddings. Writes nothing to the corpus.
 
 Run: PYTHONPATH=. .venv/bin/python -m analysis.retrieval_audit \
         --competitions spooky-author-identification,leaf-classification
-(needs ANTHROPIC_API_KEY + VOYAGE_API_KEY; source .env first)
+(needs ANTHROPIC_API_KEY + VOYAGE_API_KEY in the environment or .env)
 """
 
 import argparse

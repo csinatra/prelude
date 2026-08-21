@@ -60,9 +60,10 @@ rsync -av results/ <box>:~/work/prelude/results/
 git clone https://github.com/csinatra/prelude.git ~/work/prelude
 # fill from the template, then source it — box gets only the four keys it
 # needs (least privilege; spec-pipeline keys stay on the dev machine)
-cp ~/work/prelude/.env.cloudbox.example ~/work/prelude/.env.cloudbox
-# edit .env.cloudbox, then:
-set -a && . ~/work/prelude/.env.cloudbox && set +a
+cp ~/work/prelude/.env.cloudbox.example ~/work/prelude/.env
+# edit .env, then export it for the setup script (the `python -m` entry points
+# load .env themselves — see pipeline/env.py):
+set -a && . ~/work/prelude/.env && set +a
 ~/work/prelude/scripts/setup_cloudbox.sh
 ```
 
@@ -131,7 +132,7 @@ it per run from `spec_path`; a manual B/C run:
 ```bash
 cd ~/work/mle-bench
 echo <competition> > experiments/splits/<run_key>.txt
-PRELUDE_SPEC_PATH=~/work/prelude/results/<run_key>/spec.md \
+PRELUDE_SPEC_PATH=~/work/prelude/results/$PRELUDE_REGISTRY_STAGE/<run_key>/spec.md \
   .venv/bin/python run_agent.py --agent-id aide-prelude \
     --competition-set experiments/splits/<run_key>.txt --data-dir $MLEBENCH_DATA_DIR
 ```
@@ -215,6 +216,8 @@ verify on the first automated batch run before relying on the drained path.
 ```bash
 rsync -av <box>:~/work/prelude/results/ results/
 # registries merge by concatenation; load_runs() merges fields per run_key
+# WITHIN one stage. Both machines must be on the same PRELUDE_REGISTRY_STAGE,
+# or the box appends to a registry the dev machine never reads (docs/DATA.md).
 ```
 
 Then: `analysis/judge.py` against the frozen rubric ([JUDGE_RUBRIC.md](JUDGE_RUBRIC.md)

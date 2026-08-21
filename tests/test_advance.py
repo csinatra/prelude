@@ -7,7 +7,7 @@ from harness import advance, registry
 
 @pytest.fixture
 def seeded_registry(tmp_path, monkeypatch):
-    monkeypatch.setattr(registry, "RUNS_PATH", tmp_path / "runs.jsonl")
+    monkeypatch.setattr(registry, "RESULTS_DIR", tmp_path)
     registry.append_run(
         entry={
             "run_key": "comp_B2_0",

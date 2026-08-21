@@ -104,9 +104,6 @@ def run(problem_statement: str) -> SpecState:
 
 
 if __name__ == "__main__":
-    from dotenv import load_dotenv
-
-    load_dotenv()
     example = (
         "We want to predict which customers will churn next month so the "
         "retention team can send them a discount offer. We have 18 months "

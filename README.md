@@ -1,20 +1,40 @@
 # Prelude
 
-Structured problem specification before agentic execution begins — a research
-POC on LLM-assisted problem framing for ML engineering.
+A research POC on how structured specification, built from retrieved practitioner knowledge, affects agentic execution in ML engineering.
 
-> **Status (2026-08-03):** pipeline architecture and experimental design
+> **Status (2026-08-17):** pipeline architecture and experimental design
 > complete (B1 / B2 / C1 / C2, summary-level staged retrieval, mechanistic-analysis
-> scaffold). AIDE injection path confirmed end-to-end via smoke run.
+> scaffold). AIDE injection path confirmed end-to-end via smoke run. Corpus
+> rebuilt at eval scale (25,633 practitioner summaries over 580 competitions),
+> and retrieval characterized against it.
 > **Evaluation runs not yet executed.**
+
+## Contents
+
+- [Motivation](#motivation)
+- [Research question](#research-question)
+- [Conditions](#conditions)
+- [Pipeline](#pipeline--four-stages-with-explicit-intermediate-outputs)
+- [Corpus and retrieval](#corpus-and-retrieval)
+- [Related work](#related-work)
+- [Stack](#stack)
+- [Architecture](#architecture)
+- [Setup](#setup)
+- [Run the toy pipeline](#run-the-toy-pipeline)
+- [Run the full pipeline](#run-the-full-pipeline)
+- [Layout](#layout)
+- [Documentation](#documentation)
+- [Tests](#tests)
 
 ## Motivation
 
 Before an agent writes a line of code, a human expert does the part that's hardest to automate: they frame the problem. As agentic systems take on more of the work between a stated goal and a finished result, more of what determines success sits upstream of execution. Translating an ambiguous goal into something verifiable is a critical first step to building any solution, starting with the basic question of what the core problem actually is and what would count as a good answer.
 
-Problem framing draws on things that don't show up cleanly in a task description. Things like institutional precedent, awareness of failure modes and implicit assumptions, judgment about what a metric actually needs to capture, and constraints that live outside the immediate problem statement. People with domain expertise supply this instinctively. Often that means rounds of conversation with collaborators and senior colleagues, testing an idea against people who have seen adjacent problems, before ever committing to a direction. An agentic system has significant knowledge baked into its parameters, but applying that knowledge to a specific problem still takes direction. Something has to point it at the right context, the right failure modes, the right constraints. Left on its own, a system may land on an idea that's sound in principle but just doesn't fit the actual constraints of the problem, the deployment environment, the data limitations, the infrastructure already in place. That's the gap between a research implementation and one that survives production.
+Problem framing draws on things that don't show up cleanly in a task description. Things like institutional precedent, awareness of failure modes and implicit assumptions, judgment about what a metric actually needs to capture, and constraints that live outside the immediate problem statement. People with domain expertise supply this instinctively. Before ever committing to a direction, practitioners test an idea through rounds of conversation with collaborators and senior colleagues who have seen adjacent problems. An agentic system has significant knowledge baked into its parameters, but applying that knowledge to a specific problem still takes direction. Something has to point it at the right context, the right failure modes, the right constraints. What a practitioner gets from those conversations has to be retrieved from the record other practitioners left behind. Left on its own, a system may land on an idea that's sound in principle but just doesn't fit the problem as it actually is, given the deployment environment, the data limitations, the infrastructure already in place. That's the gap between a research implementation and one that survives production.
 
-That gap, between stating a goal and understanding a problem well enough to act on it, is the space this project explores. The underlying capabilities apply more broadly to any LLM-based system working through a complex task. That means decomposing an ambiguous problem into its core elements, understanding what knowledge is actually needed against what's available, and reasoning critically across all of that to arrive at a solution. This project starts with a narrower focus, testing whether structure helps in one measurable domain, on the premise that in the context of ML engineering, the gap is concrete and easier to see.
+Upstream of that sits another gap, between stating a goal and having a specification complete enough to reach the intended result. That is the space this project explores.
+
+Any LLM-based system working through a complex task needs the same thing, a specification that captures the full scope of the desired outcome. Producing one means decomposing an ambiguous problem into its core elements, matching what knowledge is needed against what's available, and reasoning critically across those dimensions. This project starts with a narrower focus, testing whether structure helps in one verifiable domain, on the premise that, in the context of ML engineering, the gap is concrete and easier to measure.
 
 ## Research question
 
@@ -110,11 +130,20 @@ python -m ingest.ingest_metadata    # → competition_metadata collection
 python -m ingest.ingest_summaries   # → notebook_summaries (one LLM abstract per notebook; resumable)
 ```
 
+The eval corpus widens the notebook slice past Lite-22 and keeps only notebooks
+carrying a positive `kaggle_score` — the available evidence that a notebook
+produced a real submission:
+
+```bash
+python -m ingest.ingest_summaries --scope full --scored-only --batch --rebuild
+```
+
 `--rebuild` drops and rebuilds a collection, which is required after an
 embedding-model or summary-prompt change since skip-existing resumability would
-otherwise leave stale records in place. For the full-corpus run, `--batch` on
-`ingest_summaries` uses the Anthropic Message Batches API (50% discount, async,
-resumes after interruption).
+otherwise leave stale records in place. `--batch` uses the Anthropic Message
+Batches API (50% discount, async, resumes after interruption), which the
+full-scope run needs at its size. Sizing and cost for both slices are in
+[COST_ESTIMATE.md](docs/COST_ESTIMATE.md).
 
 ## Related work
 
@@ -171,6 +200,9 @@ cp .env.example .env    # then fill in: ANTHROPIC_API_KEY, VOYAGE_API_KEY,
                         # LANGSMITH_API_KEY, LANGSMITH_TRACING_V2, LANGSMITH_PROJECT
 ```
 
+`.env` is loaded on import (`pipeline/env.py`) — no shell sourcing needed. A
+variable already exported in the environment wins over the file.
+
 Dependencies are declared in `pyproject.toml` and pinned in `uv.lock`. The
 lockfile is committed so a corpus build or an evaluation run can be reproduced
 against the exact package versions that produced it.
@@ -206,7 +238,6 @@ competition's own artifacts.
 ```bash
 source .venv/bin/activate
 python -c "
-from dotenv import load_dotenv; load_dotenv()
 from pipeline.condition_c2 import run_c2
 import json
 print(json.dumps(run_c2(raw_problem='...', competition_id='spooky-author-identification'), indent=2))
@@ -261,14 +292,27 @@ pipeline/
 ├── embeddings.py             # embed() — voyage-4-large, single embedding seam
 └── toy.py                     # two-stage smoke pipeline, Anthropic-only
 
-ingest/      # offline corpus build: download, chunking, three ingestion scripts
-analysis/    # post-run scaffold: flag judge (frozen rubric), artifact preservation
-docs/        # RESEARCH_DESIGN.md, JUDGE_RUBRIC.md (frozen), COST_ESTIMATE.md
+ingest/      # offline corpus build: download, chunking, ingestion, corpus export
+analysis/    # post-run: flag judge (frozen rubric), paired stats, retrieval characterization
+docs/        # design, decisions, rubric, data handling, runbook — see below
 tests/       # pytest — unit + smoke; no real API calls (LLM + retrieval mocked)
 notebooks/   # exploratory + analysis
 data/        # raw downloads + ChromaDB store (gitignored)
-results/     # run artifacts keyed {competition}_{condition}_{seed} (gitignored during dev)
+results/     # per experiment stage: runs_{stage}.jsonl + {stage}/{run_key}/ (see docs/DATA.md)
 ```
+
+## Documentation
+
+- [RESEARCH_DESIGN.md](docs/RESEARCH_DESIGN.md) — the experiment
+- [DECISIONS.md](docs/DECISIONS.md) — dated audit trail, append-only
+- [JUDGE_RUBRIC.md](docs/JUDGE_RUBRIC.md) — per-flag judging criteria, **frozen, do not edit**
+- [JUDGE_VALIDATION.md](docs/JUDGE_VALIDATION.md) — blinded human anchor on the judge
+- [CORPUS_SAMPLES.md](docs/CORPUS_SAMPLES.md) — a sample of each document class
+- [DATA.md](docs/DATA.md) — what is published, and the corpus fingerprint
+- [RUNBOOK.md](docs/RUNBOOK.md) — two-machine operational workflow
+- [COST_ESTIMATE.md](docs/COST_ESTIMATE.md) — corpus and eval spend, by slice
+- [PROGRESS.md](docs/PROGRESS.md) — milestone history
+- [CLAUDE.md](CLAUDE.md) — operating brief for working in the repo
 
 ## Tests
 
