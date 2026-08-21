@@ -60,9 +60,10 @@ rsync -av results/ <box>:~/work/prelude/results/
 git clone https://github.com/csinatra/prelude.git ~/work/prelude
 # fill from the template, then source it — box gets only the four keys it
 # needs (least privilege; spec-pipeline keys stay on the dev machine)
-cp ~/work/prelude/.env.cloudbox.example ~/work/prelude/.env.cloudbox
-# edit .env.cloudbox, then:
-set -a && . ~/work/prelude/.env.cloudbox && set +a
+cp ~/work/prelude/.env.cloudbox.example ~/work/prelude/.env
+# edit .env, then export it for the setup script (the `python -m` entry points
+# load .env themselves — see pipeline/env.py):
+set -a && . ~/work/prelude/.env && set +a
 ~/work/prelude/scripts/setup_cloudbox.sh
 ```
 

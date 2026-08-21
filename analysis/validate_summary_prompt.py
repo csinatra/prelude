@@ -20,7 +20,7 @@ generation and there is nothing to compare against. That window recurs at every
 prompt change.
 
 Run: PYTHONPATH=. .venv/bin/python -m analysis.validate_summary_prompt
-(needs ANTHROPIC_API_KEY; source .env first). Writes results/summary_prompt_validation.json.
+(needs ANTHROPIC_API_KEY in the environment or .env). Writes results/summary_prompt_validation.json.
 """
 
 import json

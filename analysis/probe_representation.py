@@ -19,7 +19,7 @@ Result + decision: notebooks/probe_summary_vs_cells.md; docs/DECISIONS.md
 (2026-08-03 retrieval-unit entry); RESEARCH_DESIGN.md corpus/retrieval section.
 
 Run: PYTHONPATH=. .venv/bin/python -m analysis.probe_representation
-(needs ANTHROPIC_API_KEY; source .env first).
+(needs ANTHROPIC_API_KEY in the environment or .env).
 """
 import os
 from collections import defaultdict

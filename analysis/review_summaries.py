@@ -17,7 +17,7 @@ Two samples, for two different questions:
             problem would otherwise surface only after the spend.
 
 Run: PYTHONPATH=. .venv/bin/python -m analysis.review_summaries [--unseen 20]
-(needs ANTHROPIC_API_KEY; source .env first).
+(needs ANTHROPIC_API_KEY in the environment or .env).
 """
 import argparse
 import random

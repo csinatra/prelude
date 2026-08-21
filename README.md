@@ -200,6 +200,9 @@ cp .env.example .env    # then fill in: ANTHROPIC_API_KEY, VOYAGE_API_KEY,
                         # LANGSMITH_API_KEY, LANGSMITH_TRACING_V2, LANGSMITH_PROJECT
 ```
 
+`.env` is loaded on import (`pipeline/env.py`) — no shell sourcing needed. A
+variable already exported in the environment wins over the file.
+
 Dependencies are declared in `pyproject.toml` and pinned in `uv.lock`. The
 lockfile is committed so a corpus build or an evaluation run can be reproduced
 against the exact package versions that produced it.
@@ -235,7 +238,6 @@ competition's own artifacts.
 ```bash
 source .venv/bin/activate
 python -c "
-from dotenv import load_dotenv; load_dotenv()
 from pipeline.condition_c2 import run_c2
 import json
 print(json.dumps(run_c2(raw_problem='...', competition_id='spooky-author-identification'), indent=2))
