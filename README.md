@@ -293,7 +293,8 @@ pipeline/
 └── toy.py                     # two-stage smoke pipeline, Anthropic-only
 
 ingest/      # offline corpus build: download, chunking, ingestion, corpus export
-analysis/    # post-run: flag judge (frozen rubric), paired stats, retrieval characterization
+analysis/    # post-run: flag judge (frozen rubric) + blinded human anchor, paired stats,
+             #   retrieval characterization
 docs/        # design, decisions, rubric, data handling, runbook — see below
 tests/       # pytest — unit + smoke; no real API calls (LLM + retrieval mocked)
 notebooks/   # exploratory + analysis

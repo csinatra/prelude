@@ -74,6 +74,7 @@ class AgentOutputs:
     metrics: dict
     solution_path: str | None = None
     token_usage_path: str | None = None
+    viz_paths: tuple[str, ...] = ()
 
 
 def pending_runs() -> list[dict]:
@@ -145,6 +146,7 @@ def _run_agent(*, run: dict, data_dir: Path) -> AgentOutputs:
         metrics=metrics,
         solution_path=solution_path,
         token_usage_path=token_usage_path,
+        viz_paths=_locate_viz(run_output_dir=run_output_dir),
     )
 
 
@@ -167,6 +169,18 @@ def _locate_outputs(
     solution = find("**/logs/best_solution.py") or find("**/code/solution.py")
     token_usage = find("**/logs/prelude_token_usage.jsonl")
     return (submission, journal, solution, token_usage)
+
+
+def _locate_viz(*, run_output_dir: Path) -> tuple[str, ...]:
+    """AIDE's own search-tree visualization, if it wrote one.
+
+    The journal is the machine-readable record; this is the navigable one, and
+    it is what makes a 500-step trajectory reviewable by a human at all
+    (docs/JUDGE_VALIDATION.md). Globbed rather than named because the filename
+    is aideml's, not ours, and unverified against a real run — anything the agent
+    left in logs/ as HTML is worth keeping. Absent is fine: nothing downstream
+    requires it."""
+    return tuple(str(path) for path in sorted(run_output_dir.glob("**/logs/*.html")))
 
 
 def _read_journal_metrics(*, journal_path: str) -> dict:
@@ -240,7 +254,7 @@ def execute_run(*, run: dict, data_dir: Path) -> dict:
             submission_path=outputs.submission_path,
             journal_path=outputs.journal_path,
             solution_path=outputs.solution_path,
-            extra_paths=(outputs.token_usage_path,),
+            extra_paths=(outputs.token_usage_path, *outputs.viz_paths),
         )
         advance.record_agent_run(
             run_key=run_key,

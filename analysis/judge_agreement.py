@@ -173,6 +173,23 @@ def _load_judged(path: Path) -> list[dict]:
     return json.loads(path.read_text())
 
 
+def _chain_nodes(sample: list[dict]) -> dict[str, list[dict]]:
+    """Trajectory nodes per run for the HTML page, rebuilt from the same seam the
+    judge's bundle came from — so the page shows the judge's evidence, not a
+    second selection of it."""
+    from analysis.artifacts import run_root
+    from analysis.judge_run import chain_nodes
+
+    runs = {item["run_key"] for item in sample if item.get("run_key")}
+    nodes: dict[str, list[dict]] = {}
+    for run_key in runs:
+        run_dir = run_root() / run_key
+        solution_path = run_dir / "best_solution.py"
+        solution = solution_path.read_text() if solution_path.is_file() else ""
+        nodes[run_key] = chain_nodes(run_dir=run_dir, solution=solution)
+    return nodes
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -193,10 +210,29 @@ if __name__ == "__main__":
         sample = stratified_sample(judged=judged, size=args.size)
         out = Path(args.out)
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(render_review_file(sample=sample))
+        if out.suffix == ".html":
+            from analysis.judge_review_page import render_review_page
+
+            from analysis.judge import RUBRIC_PATH
+
+            out.write_text(
+                render_review_page(
+                    sample=sample,
+                    nodes_by_run=_chain_nodes(sample),
+                    rubric_text=RUBRIC_PATH.read_text(),
+                )
+            )
+        else:
+            out.write_text(render_review_file(sample=sample))
         print(f"wrote {len(sample)} blinded items to {out}")
     else:
-        human = parse_review_file(text=Path(args.review).read_text())
+        review_path = Path(args.review)
+        if review_path.suffix == ".json":
+            from analysis.judge_review_page import parse_labels
+
+            human = parse_labels(text=review_path.read_text())
+        else:
+            human = parse_review_file(text=review_path.read_text())
         result = score_agreement(judged=judged, human=human)
         print(result.summary())
         for (llm_label, human_label), count in sorted(result.confusion.items()):
