@@ -311,3 +311,23 @@ def test_submissionless_run_stays_retryable(seeded_registry, monkeypatch, tmp_pa
                                "status": "spec_built"}, data_dir=Path("/data"))
 
     assert registry.load_runs()["comp_B2_0"].get("status") != "agent_run"
+
+
+def test_grading_report_is_preserved_to_the_volume(seeded_registry, monkeypatch, tmp_path):
+    """The report is written to the ephemeral run dir; the registry keeps only
+    extracted fields, so --terminate-on-done would destroy the primary evidence."""
+    submission = tmp_path / "run" / "submission" / "submission.csv"
+    submission.parent.mkdir(parents=True)
+    submission.write_text("id,pred\n")
+    report = tmp_path / "grading_report.json"
+    report.write_text('{"competition_id": "comp", "score": 0.5}')
+
+    monkeypatch.setattr(batch.artifacts, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr(batch, "_run_agent", lambda *, run, data_dir: batch.AgentOutputs(
+        submission_path=str(submission), journal_path=None, metrics={}))
+    monkeypatch.setattr(batch, "_grade", lambda **kw: report)
+
+    batch.execute_run(run=batch.load_runs()["comp_B2_0"], data_dir=Path("/data"))
+
+    preserved = batch.artifacts.run_root() / "comp_B2_0" / "grading_report.json"
+    assert preserved.is_file()

@@ -162,7 +162,8 @@ def _run_agent(*, run: dict, data_dir: Path) -> AgentOutputs:
         metrics=metrics,
         solution_path=solution_path,
         token_usage_path=token_usage_path,
-        viz_paths=_locate_viz(run_output_dir=run_output_dir),
+        viz_paths=_locate_viz(run_output_dir=run_output_dir)
+        + _locate_run_log(run_output_dir=run_output_dir),
     )
 
 
@@ -185,6 +186,18 @@ def _locate_outputs(
     solution = find("**/logs/best_solution.py") or find("**/code/solution.py")
     token_usage = find("**/logs/prelude_token_usage.jsonl")
     return (submission, journal, solution, token_usage)
+
+
+def _locate_run_log(*, run_output_dir: Path) -> tuple[str, ...]:
+    """The container's own log — evidence, not just debugging.
+
+    It records that the spec was mounted (the ADVISOR CONTEXT banner and the
+    `cat /home/spec/spec.md` that follows) and what hardware the agent saw from
+    its startup probe. Both are claims the writeup makes about how runs were
+    configured, so the log is preserved with the outputs rather than left on the
+    ephemeral disk."""
+    hit = next(run_output_dir.glob("**/run.log"), None)
+    return (str(hit),) if hit else ()
 
 
 def _locate_run_group(*, started_at: float) -> Path | None:
@@ -312,6 +325,10 @@ def execute_run(*, run: dict, data_dir: Path) -> dict:
     report_path = _grade(
         run=run, submission_path=submission_path, data_dir=data_dir, report_dir=report_dir
     )
+    # The report lives on the ephemeral run dir like the agent outputs did, and
+    # the registry keeps only the extracted fields — so without this copy
+    # --terminate-on-done destroys the primary grading evidence.
+    artifacts.preserve_agent_outputs(run_key=run_key, extra_paths=(str(report_path),))
     report = advance._report_for(
         report_path=report_path, run_key=run_key, competition_id=run["competition_id"]
     )
