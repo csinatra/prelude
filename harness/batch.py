@@ -112,8 +112,11 @@ def _run_agent(*, run: dict, data_dir: Path) -> AgentOutputs:
     queue. The step/time budget is the agent config's, not set here.
 
     mle-bench takes a `--competition-set` FILE (one competition id per line),
-    not a `--competition` flag; we give it a per-run split file and a dedicated
-    `--run-dir`. B/C spec injection: run_agent has no `--extra-mount`, so our
+    not a `--competition` flag; we give it a per-run split file. It does NOT
+    accept an output location — `--run-dir` is parsed and never referenced, and
+    outputs land in `runs/<timestamp>_run-group_<agent>/` under mle-bench's own
+    tree — so the group directory is located after the fact.
+    B/C spec injection: run_agent has no `--extra-mount`, so our
     setup_cloudbox.sh patches mle-bench's agents/run.py with a hook that mounts
     the file named by the PRELUDE_SPEC_PATH env var read-only at /home/spec/spec.md
     (which aide-prelude/start.sh appends as ADVISOR CONTEXT). Condition A leaves
@@ -121,7 +124,6 @@ def _run_agent(*, run: dict, data_dir: Path) -> AgentOutputs:
     the 2026-07-24 smoke run (ADVISOR CONTEXT appended, valid submission — see
     docs/DECISIONS.md).
     """
-    run_output_dir = MLEBENCH_DIR / "runs" / f"batch_{run['run_key']}"
     comp_set = MLEBENCH_DIR / "experiments" / "splits" / f"{run['run_key']}.txt"
     comp_set.parent.mkdir(parents=True, exist_ok=True)
     comp_set.write_text(run["competition_id"] + "\n")
@@ -131,7 +133,6 @@ def _run_agent(*, run: dict, data_dir: Path) -> AgentOutputs:
         "--agent-id", run.get("agent_id", "aide-prelude"),
         "--competition-set", str(comp_set),
         "--data-dir", str(data_dir),
-        "--run-dir", str(run_output_dir),
         # mle-bench's default container config gives the agent 4 vCPUs and no
         # GPU, which is a Docker default rather than the benchmark's stated
         # baseline (36 vCPUs + one A10). See cloudbox/README.md.
@@ -145,7 +146,12 @@ def _run_agent(*, run: dict, data_dir: Path) -> AgentOutputs:
             raise RuntimeError(f"{run['run_key']}: spec not found at {spec_abs}")
         env["PRELUDE_SPEC_PATH"] = str(spec_abs)
     logger.info("agent argv: %s (spec=%s)", " ".join(argv), env.get("PRELUDE_SPEC_PATH", "-"))
+    started_at = time.time()
     subprocess.run(argv, cwd=MLEBENCH_DIR, check=True, env=env)
+    run_output_dir = _locate_run_group(started_at=started_at)
+    if run_output_dir is None:
+        raise RuntimeError(f"{run['run_key']}: no run group created under {MLEBENCH_DIR / 'runs'}")
+    logger.info("run group: %s", run_output_dir.name)
     submission_path, journal_path, solution_path, token_usage_path = _locate_outputs(
         run_output_dir=run_output_dir
     )
@@ -179,6 +185,22 @@ def _locate_outputs(
     solution = find("**/logs/best_solution.py") or find("**/code/solution.py")
     token_usage = find("**/logs/prelude_token_usage.jsonl")
     return (submission, journal, solution, token_usage)
+
+
+def _locate_run_group(*, started_at: float) -> Path | None:
+    """The run-group directory mle-bench just created.
+
+    It names its own output dir `runs/<timestamp>_run-group_<agent>/` and gives
+    no way to choose one, so the only handle is what appeared during this call.
+    Safe because the driver is deliberately serial — one agent run at a time —
+    and the mtime floor keeps the ~150 pre-existing group dirs out.
+    """
+    groups = [
+        path
+        for path in (MLEBENCH_DIR / "runs").glob("*_run-group_*")
+        if path.is_dir() and path.stat().st_mtime >= started_at - 5
+    ]
+    return max(groups, key=lambda path: path.stat().st_mtime, default=None)
 
 
 def _locate_viz(*, run_output_dir: Path) -> tuple[str, ...]:

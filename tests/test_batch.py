@@ -1,6 +1,7 @@
 """Batch driver orchestration: queue selection, sequencing, failure isolation,
 registry advancement, and terminate gating — box seams (agent/grade) mocked."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -172,6 +173,7 @@ def test_run_agent_sets_spec_env_for_bc(monkeypatch, tmp_path):
     monkeypatch.setattr(batch, "MLEBENCH_DIR", tmp_path)
     monkeypatch.setattr(batch.subprocess, "run",
                         lambda argv, **kw: captured.update(argv=argv, env=kw.get("env")))
+    monkeypatch.setattr(batch, "_locate_run_group", lambda *, started_at: tmp_path)
     monkeypatch.setattr(batch, "_locate_outputs",
                         lambda *, run_output_dir: ("/x/submission.csv", None, None, None))
 
@@ -194,6 +196,7 @@ def test_run_agent_uses_mlebenchs_own_interpreter(monkeypatch, tmp_path):
     monkeypatch.setattr(batch, "MLEBENCH_DIR", tmp_path)
     monkeypatch.setattr(batch, "MLEBENCH_PYTHON", tmp_path / ".venv" / "bin" / "python")
     monkeypatch.setattr(batch.subprocess, "run", lambda argv, **kw: captured.update(argv=argv))
+    monkeypatch.setattr(batch, "_locate_run_group", lambda *, started_at: tmp_path)
     monkeypatch.setattr(batch, "_locate_outputs",
                         lambda *, run_output_dir: (None, None, None, None))
 
@@ -203,6 +206,38 @@ def test_run_agent_uses_mlebenchs_own_interpreter(monkeypatch, tmp_path):
     )
     assert captured["argv"][0] == str(tmp_path / ".venv" / "bin" / "python")
     assert "--container-config" in captured["argv"]  # benchmark resources, not Docker defaults
+
+
+def test_locate_run_group_picks_the_one_just_created(monkeypatch, tmp_path):
+    """mle-bench names its own output dir and ignores --run-dir.
+
+    Regression: the driver looked in runs/batch_{run_key}/, which never exists,
+    so every run failed at grading with "no submission to grade" while the real
+    outputs sat in runs/<timestamp>_run-group_<agent>/.
+    """
+    import time as time_mod
+
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    monkeypatch.setattr(batch, "MLEBENCH_DIR", tmp_path)
+
+    stale = runs / "2024-09-06T18-25-55-UTC_run-group_aide"
+    stale.mkdir()
+    os.utime(stale, (1_000_000, 1_000_000))  # one of ~150 pre-existing groups
+
+    started = time_mod.time()
+    fresh = runs / "2026-08-24T17-35-13-GMT_run-group_aide-prelude"
+    fresh.mkdir()
+
+    assert batch._locate_run_group(started_at=started) == fresh
+
+
+def test_locate_run_group_returns_none_when_nothing_was_created(monkeypatch, tmp_path):
+    import time as time_mod
+
+    (tmp_path / "runs").mkdir()
+    monkeypatch.setattr(batch, "MLEBENCH_DIR", tmp_path)
+    assert batch._locate_run_group(started_at=time_mod.time()) is None
 
 
 def test_execute_run_preserves_agent_artifacts_to_volume(seeded_registry, monkeypatch, tmp_path):
@@ -243,6 +278,7 @@ def test_run_agent_no_spec_env_for_a(monkeypatch, tmp_path):
     monkeypatch.setattr(batch, "MLEBENCH_DIR", tmp_path)
     monkeypatch.setattr(batch.subprocess, "run",
                         lambda argv, **kw: captured.update(env=kw.get("env")))
+    monkeypatch.setattr(batch, "_locate_run_group", lambda *, started_at: tmp_path)
     monkeypatch.setattr(batch, "_locate_outputs", lambda *, run_output_dir: (None, None, None, None))
 
     batch._run_agent(run={"run_key": "comp_A_0", "competition_id": "comp"}, data_dir=Path("/data"))
