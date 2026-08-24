@@ -65,6 +65,7 @@ DONE_STATUS = "graded"
 NEEDS_AGENT_STATUSES = {"spec_built", "registered"}
 
 MLEBENCH_DIR = Path(os.environ.get("MLEBENCH_DIR", str(Path.home() / "work" / "mle-bench")))
+CONTAINER_CONFIG = Path(__file__).resolve().parent.parent / "cloudbox" / "container_config.json"
 
 
 @dataclass
@@ -126,6 +127,10 @@ def _run_agent(*, run: dict, data_dir: Path) -> AgentOutputs:
         "--competition-set", str(comp_set),
         "--data-dir", str(data_dir),
         "--run-dir", str(run_output_dir),
+        # mle-bench's default container config gives the agent 4 vCPUs and no
+        # GPU, which is a Docker default rather than the benchmark's stated
+        # baseline (36 vCPUs + one A10). See cloudbox/README.md.
+        "--container-config", str(CONTAINER_CONFIG),
     ]
     env = os.environ.copy()
     spec_path = run.get("spec_path")  # relative to the prelude repo = the batch driver's cwd

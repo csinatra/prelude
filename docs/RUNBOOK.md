@@ -134,8 +134,14 @@ cd ~/work/mle-bench
 echo <competition> > experiments/splits/<run_key>.txt
 PRELUDE_SPEC_PATH=~/work/prelude/results/$PRELUDE_REGISTRY_STAGE/<run_key>/spec.md \
   .venv/bin/python run_agent.py --agent-id aide-prelude \
-    --competition-set experiments/splits/<run_key>.txt --data-dir $MLEBENCH_DATA_DIR
+    --competition-set experiments/splits/<run_key>.txt --data-dir $MLEBENCH_DATA_DIR \
+    --container-config ~/work/prelude/cloudbox/container_config.json
 ```
+
+`--container-config` is not optional: mle-bench's default gives the agent 4
+vCPUs and no GPU, against the benchmark's own 36-vCPU + A10 baseline. `harness.batch`
+passes it automatically; a manual run must pass it too, or the run is not
+comparable to the others. See [cloudbox/README.md](../cloudbox/README.md).
 
 **Confirmed on box (2026-07-24):** the B/C spec mount works end-to-end. On a
 `random-acts-of-pizza` `/dev` run, `run.py` logged `cat /home/spec/spec.md`
