@@ -104,3 +104,16 @@ def test_run_without_solution_is_skipped_not_judged(run_dir, monkeypatch):
         judge_run, "judge_flags", lambda **kwargs: pytest.fail("must not judge without artifacts")
     )
     assert judge_run.judge_run(run_key="comp_C2_0")["judged"] == 0
+
+
+def test_term_out_read_from_the_serialized_key(run_dir):
+    """aideml serializes `_term_out`; reading `term_out` yields "" for every node.
+
+    Regression: the evidence bundle carried no observed output at all, which the
+    rubric's acted_on_positive depends on.
+    """
+    (run_dir / "journal.json").write_text(
+        json.dumps({"nodes": [{"id": "a", "step": 0, "_term_out": "fold auc=0.61"}]})
+    )
+    nodes = judge_run.chain_nodes(run_dir=run_dir, solution="")
+    assert nodes[0]["term_out"] == "fold auc=0.61"

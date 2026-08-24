@@ -115,10 +115,22 @@ def chain_nodes(*, run_dir: Path, solution: str) -> list[dict]:
             "is_buggy": bool(node.get("is_buggy")),
             "metric": node.get("metric"),
             "analysis": str(node.get("analysis", "")),
-            "term_out": str(node.get("term_out", ""))[:EVIDENCE_NODE_CHARS],
+            "term_out": _term_out(node=node)[:EVIDENCE_NODE_CHARS],
         }
         for node in _ancestor_chain(nodes=nodes, solution=solution)
     ]
+
+
+def _term_out(*, node: dict) -> str:
+    """Execution output, under whichever key the journal used.
+
+    aideml exposes `term_out` as a property but serializes the underlying
+    `_term_out` attribute, so a journal on disk carries only the underscored
+    name. Reading the property name silently yields "" for every node — and the
+    rubric's `acted_on_positive` rests on observed output, so that would look
+    like a judge that never finds positive evidence rather than a missing field.
+    """
+    return str(node.get("_term_out") or node.get("term_out") or "")
 
 
 def _render_chain(*, chain: list[dict]) -> str:
