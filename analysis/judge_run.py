@@ -19,11 +19,23 @@ would be invisible, and agreement inflated rather than measured.
 (cloudbox/agents/aide-prelude/config.yaml), so a full journal fits neither a
 judge's context nor a reviewer's afternoon. The bundle is the best solution plus
 its ancestor chain in the search tree — the lineage that produced the submitted
-code, selected structurally rather than by any rater. That is also the evidence
-`acted_on_positive` is defined on: a failure at one node, resolved at a
-descendant. Discarded branches are invisible to both raters, a real limit but
-arguably correct scoping — a flag addressed only in an abandoned branch did not
-shape the submitted solution.
+code, selected structurally rather than by any rater.
+
+**What the bundle's two halves each carry.** The rubric's *action* criterion —
+the `not_acted_on` / `acted_on_*` boundary, which is what H2 rests on — is
+judged against the flag and the **solution**: an identifiable design choice
+addressing the flag's mechanism. The solution is always supplied whole, so that
+judgment does not depend on how deep the chain runs.
+
+The logs matter only for the further step to `acted_on_positive`, and the rubric
+admits three evidence types for it: a failure occurring before a mitigation and
+resolved after (which the chain does carry), ablation-like comparisons within
+the run, and validation-vs-leaderboard gap behavior. The ancestor chain serves
+the first and is a poor fit for the second, since an ablation-like comparison
+usually sits between *siblings* — one node with the mitigation against one
+without — which lineage excludes by construction. See docs/JUDGE_VALIDATION.md
+for the consequence; the limit is in what evidence reaches the raters, not in
+the rubric.
 
 The caps below are placeholders, pinned against a measured journal before
 judging begins; nothing has run at full budget yet.
