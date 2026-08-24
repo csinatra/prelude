@@ -117,3 +117,45 @@ def test_term_out_read_from_the_serialized_key(run_dir):
     )
     nodes = judge_run.chain_nodes(run_dir=run_dir, solution="")
     assert nodes[0]["term_out"] == "fold auc=0.61"
+
+
+REAL_METRIC_JOURNAL = {
+    "nodes": [
+        {"id": "a", "parent": None, "step": 0, "is_buggy": False,
+         "metric": {"value": 0.5997, "maximize": True}, "code": "a"},
+        {"id": "b", "parent": "a", "step": 1, "is_buggy": False,
+         "metric": {"value": 0.6625, "maximize": True}, "code": "b"},  # best
+        {"id": "c", "parent": "b", "step": 3, "is_buggy": True,
+         "metric": {"value": None, "maximize": None}, "code": "c"},
+        {"id": "d", "parent": "c", "step": 6, "is_buggy": False,
+         "metric": {"value": 0.6352, "maximize": True}, "code": "d"},  # later but worse
+    ]
+}
+
+
+def test_best_node_uses_the_metric_not_position(run_dir):
+    """AIDE serializes metric as {value, maximize}; a later node often scores worse."""
+    (run_dir / "journal.json").write_text(json.dumps(REAL_METRIC_JOURNAL))
+    nodes = judge_run.chain_nodes(run_dir=run_dir, solution="no match")
+    assert nodes[-1]["step"] == 1  # 0.6625, not the later 0.6352
+    assert nodes[-1]["metric"] == 0.6625  # scalar, not the raw dict
+
+
+def test_buggy_nodes_with_null_metric_are_not_scored(run_dir):
+    """{"value": None} is a dict, so testing the field for None counts it as scored."""
+    (run_dir / "journal.json").write_text(json.dumps({"nodes": [
+        {"id": "a", "step": 0, "is_buggy": True, "metric": {"value": None, "maximize": None}},
+    ]}))
+    nodes = judge_run.chain_nodes(run_dir=run_dir, solution="no match")
+    assert nodes[0]["metric"] is None
+
+
+def test_minimizing_metric_picks_the_lowest(run_dir):
+    (run_dir / "journal.json").write_text(json.dumps({"nodes": [
+        {"id": "a", "parent": None, "step": 0, "is_buggy": False,
+         "metric": {"value": 0.9, "maximize": False}},
+        {"id": "b", "parent": "a", "step": 1, "is_buggy": False,
+         "metric": {"value": 0.2, "maximize": False}},
+    ]}))
+    nodes = judge_run.chain_nodes(run_dir=run_dir, solution="no match")
+    assert nodes[-1]["metric"] == 0.2

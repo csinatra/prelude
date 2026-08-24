@@ -66,11 +66,33 @@ def _best_node(*, nodes: list[dict], solution: str) -> dict | None:
         for node in nodes:
             if str(node.get("code", "")).strip() == stripped:
                 return node
-    scored = [node for node in nodes if not node.get("is_buggy") and node.get("metric") is not None]
-    # AIDE metrics carry their own direction, which the journal does not state
-    # here; ordering by position is the honest fallback — later non-buggy nodes
-    # supersede earlier ones in AIDE's own search.
-    return scored[-1] if scored else nodes[-1]
+    scored = [
+        (value, maximize, node)
+        for node in nodes
+        if not node.get("is_buggy")
+        for value, maximize in [_metric(node=node)]
+        if value is not None
+    ]
+    if not scored:
+        return nodes[-1]
+    # AIDE states its own direction per node, so the best node is the extremum
+    # rather than the latest — a later node routinely scores worse than an
+    # earlier one (observed: 0.6625 at step 1 against 0.6352 at step 6).
+    maximize = scored[0][1]
+    return (max if maximize else min)(scored, key=lambda item: item[0])[2]
+
+
+def _metric(*, node: dict) -> tuple[float | None, bool]:
+    """(value, maximize) from a journal node.
+
+    AIDE serializes `metric` as `{"value": ..., "maximize": ...}`, and a buggy
+    node carries `{"value": None}` — which is not None as a dict, so testing the
+    field itself for None treats failed nodes as scored.
+    """
+    metric = node.get("metric")
+    if isinstance(metric, dict):
+        return metric.get("value"), bool(metric.get("maximize", True))
+    return metric, True
 
 
 def _ancestor_chain(*, nodes: list[dict], solution: str) -> list[dict]:
@@ -113,7 +135,7 @@ def chain_nodes(*, run_dir: Path, solution: str) -> list[dict]:
         {
             "step": node.get("step"),
             "is_buggy": bool(node.get("is_buggy")),
-            "metric": node.get("metric"),
+            "metric": _metric(node=node)[0],
             "analysis": str(node.get("analysis", "")),
             "term_out": _term_out(node=node)[:EVIDENCE_NODE_CHARS],
         }
