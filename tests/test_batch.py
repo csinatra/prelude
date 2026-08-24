@@ -1,6 +1,7 @@
 """Batch driver orchestration: queue selection, sequencing, failure isolation,
 registry advancement, and terminate gating — box seams (agent/grade) mocked."""
 
+import json
 import os
 from pathlib import Path
 
@@ -384,3 +385,131 @@ def test_spec_resolves_against_this_machines_results_root(monkeypatch, tmp_path)
         data_dir=Path("/data"),
     )
     assert captured["env"]["PRELUDE_SPEC_PATH"] == str(spec.resolve())
+
+
+# ── convergence + cost measures (H3) ────────────────────────────────────
+#
+# Node shapes copied from a real aideml journal (2026-08-24 box run): `ctime` is
+# stamped when the drafting call RETURNS, so node N+1's ctime is node N's ctime
+# plus its exec_time plus the next draft. `metric` is a dict carrying its own
+# direction, and a buggy node's value is None inside that dict.
+
+def _journal(*, tmp_path, nodes: list[dict]) -> str:
+    path = tmp_path / "journal.json"
+    path.write_text(json.dumps({"nodes": nodes}))
+    return str(path)
+
+
+def _node(*, step, ctime, exec_time=1.0, value=None, buggy=False, maximize=True) -> dict:
+    return {
+        "step": step,
+        "ctime": ctime,
+        "exec_time": exec_time,
+        "is_buggy": buggy,
+        "metric": {"value": value, "maximize": maximize},
+    }
+
+
+def _token_log(*, tmp_path, starts: list[float]) -> str:
+    path = tmp_path / "prelude_token_usage.jsonl"
+    path.write_text(
+        "\n".join(
+            json.dumps({"t_start": start, "t_end": start + 1, "input_tokens": 10,
+                        "output_tokens": 2, "cache_read_input_tokens": 3,
+                        "cache_creation_input_tokens": 0})
+            for start in starts
+        )
+    )
+    return str(path)
+
+
+def test_first_valid_at_node_zero_is_not_time_zero(tmp_path):
+    """Regression: measuring from min(ctime) floored this metric at exactly 0.0.
+
+    A spec good enough to make the agent's first draft work is the case H3 most
+    needs to resolve, and creation-to-creation timing reported it as no time at
+    all.
+    """
+    nodes = [_node(step=0, ctime=1000.0, exec_time=118.8, value=0.63)]
+    metrics = batch._read_journal_metrics(
+        journal_path=_journal(tmp_path=tmp_path, nodes=nodes),
+        token_usage_path=_token_log(tmp_path=tmp_path, starts=[986.0]),
+    )
+    assert metrics["steps_to_first_valid"] == 1
+    assert metrics["time_to_first_valid_secs"] == pytest.approx(132.8)
+    assert metrics["timing_origin"] == "first_llm_call"
+
+
+def test_milestones_skip_buggy_nodes_and_track_the_metric_direction(tmp_path):
+    nodes = [
+        _node(step=0, ctime=1000.0, exec_time=5.0, buggy=True),
+        _node(step=1, ctime=1020.0, exec_time=10.0, value=0.50),
+        _node(step=2, ctime=1050.0, exec_time=10.0, value=0.70),
+        _node(step=3, ctime=1080.0, exec_time=10.0, value=0.60),
+    ]
+    metrics = batch._read_journal_metrics(
+        journal_path=_journal(tmp_path=tmp_path, nodes=nodes),
+        token_usage_path=_token_log(tmp_path=tmp_path, starts=[990.0]),
+    )
+    assert metrics["steps_to_first_valid"] == 2       # 1-based, buggy node 0 skipped
+    assert metrics["steps_to_best"] == 3              # the 0.70 node, not the last
+    assert metrics["best_validation_score"] == 0.70
+    assert metrics["time_to_best_secs"] == pytest.approx(70.0)
+
+
+def test_best_node_honours_lower_is_better(tmp_path):
+    nodes = [
+        _node(step=0, ctime=1000.0, value=0.30, maximize=False),
+        _node(step=1, ctime=1010.0, value=0.90, maximize=False),
+    ]
+    metrics = batch._read_journal_metrics(
+        journal_path=_journal(tmp_path=tmp_path, nodes=nodes),
+        token_usage_path=None,
+    )
+    assert metrics["best_validation_score"] == 0.30
+    assert metrics["timing_origin"] == "first_node"   # no token log to anchor to
+
+
+def test_all_buggy_run_reports_no_milestones(tmp_path):
+    nodes = [_node(step=0, ctime=1000.0, buggy=True), _node(step=1, ctime=1010.0, buggy=True)]
+    metrics = batch._read_journal_metrics(
+        journal_path=_journal(tmp_path=tmp_path, nodes=nodes), token_usage_path=None
+    )
+    assert metrics["steps"] == 2
+    assert metrics["steps_to_first_valid"] is None
+    assert metrics["time_to_first_valid_secs"] is None
+    assert metrics["best_validation_score"] is None
+
+
+def test_agent_token_totals_complete_the_cost_ledger(tmp_path):
+    """The spec side is already in the registry; without this the agent side
+    lived only in a preserved artifact and the two could not be compared."""
+    usage = batch._read_token_usage(
+        token_usage_path=_token_log(tmp_path=tmp_path, starts=[1.0, 2.0, 3.0])
+    )
+    assert usage == {
+        "llm_calls": 3,
+        "llm_input_tokens": 30,
+        "llm_output_tokens": 6,
+        "llm_cache_read_tokens": 9,
+        "llm_cache_creation_tokens": 0,
+    }
+
+
+def test_leaderboard_percentile_is_direction_aware(tmp_path, monkeypatch):
+    board = tmp_path / "mlebench" / "competitions" / "comp"
+    board.mkdir(parents=True)
+    (board / "leaderboard.csv").write_text("teamId,score\n1,0.1\n2,0.2\n3,0.3\n4,0.4\n")
+    monkeypatch.setattr(batch, "MLEBENCH_DIR", tmp_path)
+
+    higher = {"score": 0.35, "valid_submission": True, "is_lower_better": False}
+    assert batch._leaderboard_percentile(competition_id="comp", report=higher) == 0.75
+
+    lower = {"score": 0.15, "valid_submission": True, "is_lower_better": True}
+    assert batch._leaderboard_percentile(competition_id="comp", report=lower) == 0.75
+
+
+def test_leaderboard_percentile_none_without_a_valid_submission(tmp_path, monkeypatch):
+    monkeypatch.setattr(batch, "MLEBENCH_DIR", tmp_path)
+    report = {"score": 0.5, "valid_submission": False, "is_lower_better": False}
+    assert batch._leaderboard_percentile(competition_id="comp", report=report) is None

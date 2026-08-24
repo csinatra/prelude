@@ -44,6 +44,7 @@ gating) is covered by tests with those seams mocked.
 """
 
 import argparse
+import csv
 import json
 import logging
 import os
@@ -151,7 +152,12 @@ def _run_agent(*, run: dict, data_dir: Path) -> AgentOutputs:
     submission_path, journal_path, solution_path, token_usage_path = _locate_outputs(
         run_output_dir=run_output_dir
     )
-    metrics = _read_journal_metrics(journal_path=journal_path) if journal_path else {}
+    metrics = (
+        _read_journal_metrics(journal_path=journal_path, token_usage_path=token_usage_path)
+        if journal_path
+        else {}
+    )
+    metrics.update(_read_token_usage(token_usage_path=token_usage_path))
     return AgentOutputs(
         submission_path=submission_path,
         journal_path=journal_path,
@@ -244,29 +250,157 @@ def _locate_viz(*, run_output_dir: Path) -> tuple[str, ...]:
     return tuple(str(path) for path in sorted(run_output_dir.glob("**/logs/*.html")))
 
 
-def _read_journal_metrics(*, journal_path: str) -> dict:
-    """steps / wallclock / time-to-first-valid from the AIDE journal.
+def _node_end(*, node: dict) -> float | None:
+    """When a node finished executing.
+
+    AIDE stamps `ctime` when the *drafting call returns*, not when the node
+    finishes — verified against a real journal, where node N+1's ctime equals
+    node N's ctime plus node N's exec_time plus the next draft. So a node's end
+    is ctime + exec_time, and no journal field marks the run's true beginning.
+    """
+    if "ctime" not in node:
+        return None
+    return node["ctime"] + (node.get("exec_time") or 0)
+
+
+def _node_metric(*, node: dict) -> tuple[float | None, bool]:
+    """(value, maximize) from a node, tolerating both serialization shapes.
+
+    A buggy node carries `{"value": None}` — a dict, not None — so testing the
+    field itself would count failed nodes as scored.
+    """
+    metric = node.get("metric")
+    if isinstance(metric, dict):
+        return metric.get("value"), bool(metric.get("maximize", True))
+    return metric, True
+
+
+def _read_journal_metrics(*, journal_path: str, token_usage_path: str | None = None) -> dict:
+    """Convergence measures for H3, from the AIDE journal.
 
     Journal is {"nodes": [{"step", "ctime", "exec_time", "metric", "is_buggy",
     ...}]}. Defensive — any schema surprise returns {}, never raises, so a graded
-    run keeps its score even if timing can't be parsed."""
+    run keeps its score even if timing can't be parsed.
+
+    Two milestones per run, recorded in both steps and seconds:
+
+    - **first valid** — the first node that ran without error. `steps_to_first_valid`
+      leads the timing pair in H3's supporting analysis (RESEARCH_DESIGN.md),
+      since wall-clock varies with data size, with whichever model the agent
+      tries, and with GPU contention.
+    - **best** — the node holding the run's best *validation* score. Note this is
+      best-so-far under a fixed step budget, so it is censored and biased toward
+      runs that happened to peak early; it summarizes the pre-registered per-step
+      score curve and is descriptive only, carrying no separation criterion.
+
+    Timing is measured from the first LLM call (`token_usage_path`), not from
+    `min(ctime)`. Measuring creation-to-creation returns exactly 0.0 whenever
+    node 0 is already valid — which is what a good spec is most likely to
+    produce, and precisely the case H3 needs to resolve. The floor would silence
+    the effect rather than measure it. Without the token log the origin falls
+    back to the first node's ctime, and both measures are then understated by
+    the first draft; the `timing_origin` field records which was used.
+    """
     try:
         nodes = json.loads(Path(journal_path).read_text()).get("nodes", [])
-        ctimes = [n["ctime"] for n in nodes if "ctime" in n]
-        if not ctimes:
+        ends = [end for node in nodes for end in [_node_end(node=node)] if end is not None]
+        if not ends:
             return {"steps": len(nodes)}
-        start = min(ctimes)
-        first_valid = next((n["ctime"] for n in nodes if not n.get("is_buggy")), None)
+        start, origin = _agent_start(token_usage_path=token_usage_path), "first_llm_call"
+        if start is None:
+            start, origin = min(node["ctime"] for node in nodes if "ctime" in node), "first_node"
+
+        def milestone(*, index: int | None, prefix: str) -> dict:
+            if index is None:
+                return {f"steps_to_{prefix}": None, f"time_to_{prefix}_secs": None}
+            end = _node_end(node=nodes[index])
+            return {
+                # 1-based: "the agent's first attempt worked" is 1 step, not 0.
+                f"steps_to_{prefix}": index + 1,
+                f"time_to_{prefix}_secs": round(end - start, 3) if end is not None else None,
+            }
+
+        scored = [
+            (value, maximize, index)
+            for index, node in enumerate(nodes)
+            if not node.get("is_buggy")
+            for value, maximize in [_node_metric(node=node)]
+            if value is not None
+        ]
+        best = None
+        if scored:
+            pick = max if scored[0][1] else min
+            best = pick(scored, key=lambda item: item[0])[2]
         return {
             "steps": len(nodes),
-            "wallclock_secs": round(max(ctimes) - start, 3),
-            "time_to_first_valid_secs": round(first_valid - start, 3)
-            if first_valid is not None
+            "wallclock_secs": round(max(ends) - start, 3),
+            "timing_origin": origin,
+            **milestone(
+                index=next(
+                    (i for i, node in enumerate(nodes) if not node.get("is_buggy")), None
+                ),
+                prefix="first_valid",
+            ),
+            **milestone(index=best, prefix="best"),
+            "best_validation_score": _node_metric(node=nodes[best])[0]
+            if best is not None
             else None,
         }
     except Exception:
         logger.exception("journal parse failed: %s", journal_path)
         return {}
+
+
+def _agent_start(*, token_usage_path: str | None) -> float | None:
+    """When the agent began work — the first LLM call's start.
+
+    The token side-channel (`prelude_token_usage.jsonl`, appended by the
+    aide-prelude backend) is the only record of the run's true origin: the
+    journal's earliest ctime is stamped when the first draft *returns*. Verified
+    against a real run, where the first node's ctime equals the first call's
+    t_end exactly."""
+    if not token_usage_path or not Path(token_usage_path).is_file():
+        return None
+    try:
+        starts = [
+            json.loads(line)["t_start"]
+            for line in Path(token_usage_path).read_text().splitlines()
+            if line.strip()
+        ]
+        return min(starts) if starts else None
+    except Exception:
+        logger.exception("token usage parse failed: %s", token_usage_path)
+        return None
+
+
+def _read_token_usage(*, token_usage_path: str | None) -> dict:
+    """Agent-side token totals — the other half of H3's two-sided cost ledger.
+
+    The spec side already lands in the registry (calls, in/out tokens); without
+    this the agent side lived only in a preserved artifact, so the cost
+    comparison the design calls for could not be made from the registry alone.
+    Per-call detail stays in the artifact for per-step attribution."""
+    if not token_usage_path or not Path(token_usage_path).is_file():
+        return {}
+    try:
+        calls = [
+            json.loads(line)
+            for line in Path(token_usage_path).read_text().splitlines()
+            if line.strip()
+        ]
+    except Exception:
+        logger.exception("token usage parse failed: %s", token_usage_path)
+        return {}
+    def total(*, field: str) -> int:
+        return sum(call.get(field) or 0 for call in calls)
+
+    return {
+        "llm_calls": len(calls),
+        "llm_input_tokens": total(field="input_tokens"),
+        "llm_output_tokens": total(field="output_tokens"),
+        "llm_cache_read_tokens": total(field="cache_read_input_tokens"),
+        "llm_cache_creation_tokens": total(field="cache_creation_input_tokens"),
+    }
 
 
 def _grade(*, run: dict, submission_path: str, data_dir: Path, report_dir: Path) -> Path:
@@ -294,6 +428,46 @@ def _grade(*, run: dict, submission_path: str, data_dir: Path, report_dir: Path)
     if report is None:
         raise RuntimeError(f"no grading report written to {report_dir}")
     return report
+
+
+def _leaderboard_percentile(*, competition_id: str, report: dict) -> float | None:
+    """Where the final submission lands in the competition's real leaderboard.
+
+    H1's "higher resolution" measure (RESEARCH_DESIGN.md): it carries more
+    information per run than a binary medal and guards against a medal
+    difference that is really threshold luck. mle-bench's CompetitionReport
+    gives medal booleans and thresholds but no percentile, and the leaderboards
+    are git-lfs files inside the mle-bench checkout — they exist only on the box,
+    so this is computed at grade time and recorded, not derived later on the dev
+    machine.
+
+    Reported as the fraction of leaderboard teams the submission beats, so higher
+    is better under both metric directions.
+    """
+    if report.get("score") is None or not report.get("valid_submission"):
+        return None
+    path = MLEBENCH_DIR / "mlebench" / "competitions" / competition_id / "leaderboard.csv"
+    if not path.is_file():
+        logger.warning("no leaderboard for %s at %s", competition_id, path)
+        return None
+    try:
+        with path.open() as handle:
+            scores = [
+                float(row["score"])
+                for row in csv.DictReader(handle)
+                if row.get("score") not in (None, "")
+            ]
+        if not scores:
+            return None
+        score = report["score"]
+        if report.get("is_lower_better"):
+            beaten = sum(1 for other in scores if score < other)
+        else:
+            beaten = sum(1 for other in scores if score > other)
+        return round(beaten / len(scores), 5)
+    except Exception:
+        logger.exception("leaderboard percentile failed: %s", path)
+        return None
 
 
 # ── orchestration ───────────────────────────────────────────────────────
@@ -328,9 +502,8 @@ def execute_run(*, run: dict, data_dir: Path) -> dict:
             run_key=run_key,
             submission_path=outputs.submission_path,
             trajectory_path=outputs.journal_path,
-            wallclock_secs=outputs.metrics.get("wallclock_secs"),
             steps=outputs.metrics.get("steps"),
-            time_to_first_valid_secs=outputs.metrics.get("time_to_first_valid_secs"),
+            metrics=outputs.metrics,
             agent_id=run.get("agent_id", "aide-prelude"),
         )
 
@@ -347,6 +520,9 @@ def execute_run(*, run: dict, data_dir: Path) -> dict:
     artifacts.preserve_agent_outputs(run_key=run_key, extra_paths=(str(report_path),))
     report = advance._report_for(
         report_path=report_path, run_key=run_key, competition_id=run["competition_id"]
+    )
+    report["leaderboard_percentile"] = _leaderboard_percentile(
+        competition_id=run["competition_id"], report=report
     )
     return advance.record_graded(run_key=run_key, report=report)
 

@@ -29,6 +29,9 @@ from harness.registry import append_run, load_runs
 # distance is computable without re-opening report files.
 GRADED_FIELDS = [
     "score",
+    # Not from mle-bench: computed at grade time by harness.batch, since the
+    # leaderboards it needs live only in the mle-bench checkout on the box.
+    "leaderboard_percentile",
     "any_medal",
     "gold_medal",
     "silver_medal",
@@ -76,22 +79,43 @@ def register_run(*, competition_id: str, condition: str, seed: int) -> dict:
     return entry
 
 
+# Journal- and token-log-derived fields (harness.batch._read_journal_metrics /
+# _read_token_usage), stored under an `agent_` prefix to keep the agent side of
+# the two-sided cost ledger distinct from the spec side's `spec_llm_*`.
+AGENT_METRIC_FIELDS = [
+    "wallclock_secs",
+    "timing_origin",
+    "steps_to_first_valid",
+    "time_to_first_valid_secs",
+    "steps_to_best",
+    "time_to_best_secs",
+    "best_validation_score",
+    "llm_calls",
+    "llm_input_tokens",
+    "llm_output_tokens",
+    "llm_cache_read_tokens",
+    "llm_cache_creation_tokens",
+]
+
+
 def record_agent_run(
     *,
     run_key: str,
     submission_path: str | None = None,
     trajectory_path: str | None = None,
-    wallclock_secs: float | None = None,
     steps: int | None = None,
-    time_to_first_valid_secs: float | None = None,
+    metrics: dict | None = None,
     agent_id: str = "aide-prelude",
 ) -> dict:
     """Register that the AIDE run for this run_key completed.
 
-    steps and time_to_first_valid_secs come from the AIDE journal; the full
-    journal is preserved via trajectory_path for score-vs-time trajectory
-    analysis (efficiency accounting — see RESEARCH_DESIGN.md).
+    `metrics` carries the journal- and token-log-derived measures; the full
+    journal is preserved via trajectory_path for the per-step score/time curves
+    (H3 — see RESEARCH_DESIGN.md). Only AGENT_METRIC_FIELDS are recorded, so a
+    new key in the metrics dict has to be declared here before it reaches the
+    registry and the writeup.
     """
+    metrics = metrics or {}
     return _advance(
         run_key=run_key,
         status="agent_run",
@@ -99,9 +123,8 @@ def record_agent_run(
             "agent_id": agent_id,
             "agent_submission_path": submission_path,
             "agent_trajectory_path": trajectory_path,
-            "agent_wallclock_secs": wallclock_secs,
             "agent_steps": steps,
-            "agent_time_to_first_valid_secs": time_to_first_valid_secs,
+            **{f"agent_{field}": metrics.get(field) for field in AGENT_METRIC_FIELDS},
         },
     )
 
@@ -146,9 +169,8 @@ if __name__ == "__main__":
     agent_parser.add_argument("--run-key", required=True)
     agent_parser.add_argument("--submission")
     agent_parser.add_argument("--trajectory")
-    agent_parser.add_argument("--wallclock-secs", type=float)
     agent_parser.add_argument("--steps", type=int)
-    agent_parser.add_argument("--time-to-first-valid-secs", type=float)
+    agent_parser.add_argument("--wallclock-secs", type=float)
     agent_parser.add_argument("--agent-id", default="aide-prelude")
 
     graded_parser = subparsers.add_parser("graded")
@@ -161,13 +183,14 @@ if __name__ == "__main__":
             competition_id=args.competition, condition=args.condition, seed=args.seed
         )
     elif args.command == "agent-run":
+        # Manual fallback for a run recorded by hand; the batch driver passes the
+        # full metrics dict rather than going through these flags.
         entry = record_agent_run(
             run_key=args.run_key,
             submission_path=args.submission,
             trajectory_path=args.trajectory,
-            wallclock_secs=args.wallclock_secs,
             steps=args.steps,
-            time_to_first_valid_secs=args.time_to_first_valid_secs,
+            metrics={"wallclock_secs": args.wallclock_secs},
             agent_id=args.agent_id,
         )
     else:
