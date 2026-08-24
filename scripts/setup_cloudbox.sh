@@ -84,17 +84,20 @@ cd "$WORK_DIR"
 if [ ! -d prelude ]; then git clone "$PRELUDE_REPO"; fi
 cd prelude && git pull --ff-only && cd ..
 
-# Persist results/ (runs.jsonl registry + artifacts + logs) on the mounted
-# volume, not the ephemeral boot disk. The queue/resume/abandon model needs the
-# registry to survive instance termination, and --terminate-on-done would
-# otherwise destroy the very run outputs and failure logs it just produced.
+# Run outputs (registry + artifacts + logs) belong on the mounted volume, not
+# the ephemeral boot disk: the queue/resume/abandon model needs the registry to
+# survive termination, and --terminate-on-done would otherwise destroy the very
+# outputs it just produced.
+#
+# This used to be a symlink at prelude/results. That could never work: the repo
+# tracks results/corpus_export/manifest.json, so the clone creates the directory
+# first and the link was skipped with a warning nobody reads. The path is now
+# explicit config (PRELUDE_RESULTS_DIR), and harness.batch refuses to terminate
+# an instance whose results are still on the boot disk.
 RESULTS_DIR="$MLEBENCH_DATA_DIR/prelude-results"
 mkdir -p "$RESULTS_DIR"
-if [ -e "$WORK_DIR/prelude/results" ] && [ ! -L "$WORK_DIR/prelude/results" ]; then
-  echo "WARNING: $WORK_DIR/prelude/results exists and is not a symlink — leaving as-is" >&2
-else
-  ln -sfn "$RESULTS_DIR" "$WORK_DIR/prelude/results"
-fi
+echo "Run outputs -> $RESULTS_DIR"
+echo "  Add to $WORK_DIR/prelude/.env:  PRELUDE_RESULTS_DIR=$RESULTS_DIR"
 
 # git-lfs — mle-bench stores per-competition leaderboards in LFS. Without a pull
 # they're pointer files, and grading's medal-ranking asserts ("Leaderboard must

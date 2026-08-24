@@ -116,7 +116,7 @@ def test_registry_latest_entry_wins(tmp_path, monkeypatch):
 
 
 def test_run_condition_end_to_end(tmp_path, monkeypatch):
-    monkeypatch.setattr(artifacts, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr(registry, "RESULTS_DIR", tmp_path / "results")
     monkeypatch.setattr(registry, "RESULTS_DIR", tmp_path / "results")
     monkeypatch.setattr(runner, "DESCRIPTIONS_DIR", tmp_path / "descriptions")
     monkeypatch.setattr(runner, "_count_tokens", lambda *, text: 42)

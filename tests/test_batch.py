@@ -90,6 +90,7 @@ def test_retry_abandoned_requeues_parked_runs(seeded_registry):
 
 def test_terminate_on_done_fires_once_when_flagged(seeded_registry, monkeypatch):
     calls = []
+    monkeypatch.setattr(batch, "_results_survive_termination", lambda: True)
     monkeypatch.setattr(
         batch.lambda_ctl, "terminate_instance",
         lambda *, instance_id: calls.append(instance_id),
@@ -127,7 +128,6 @@ def test_execute_run_advances_spec_built_through_graded(seeded_registry, monkeyp
     (tmp_path / "grading_report.json").write_text('{"competition_id": "comp", "score": 0.5}')
 
     report = tmp_path / "grading_report.json"
-    monkeypatch.setattr(batch.artifacts, "RESULTS_DIR", tmp_path / "results")
     monkeypatch.setattr(batch, "_run_agent", lambda *, run, data_dir: batch.AgentOutputs(
         submission_path=str(submission), journal_path=str(tmp_path / "journal.json"),
         metrics={"steps": 12, "wallclock_secs": 300.0, "time_to_first_valid_secs": 60.0},
@@ -154,7 +154,6 @@ def test_execute_run_condition_a_runs_agent_without_spec(seeded_registry, monkey
         seen_spec["spec_path"] = run.get("spec_path")
         return batch.AgentOutputs(submission_path=str(submission), journal_path=None, metrics={})
 
-    monkeypatch.setattr(batch.artifacts, "RESULTS_DIR", tmp_path / "results")
     monkeypatch.setattr(batch, "_run_agent", fake_agent)
     monkeypatch.setattr(batch, "_grade", lambda **kw: report)
 
@@ -254,7 +253,6 @@ def test_execute_run_preserves_agent_artifacts_to_volume(seeded_registry, monkey
     report = tmp_path / "grading_report.json"
     report.write_text('{"competition_id": "comp", "score": 0.5}')
 
-    monkeypatch.setattr(batch.artifacts, "RESULTS_DIR", tmp_path / "results")
     monkeypatch.setattr(batch, "_run_agent", lambda *, run, data_dir: batch.AgentOutputs(
         submission_path=str(src / "submission.csv"), journal_path=str(src / "journal.json"),
         metrics={"steps": 8}, solution_path=str(src / "best_solution.py"),
@@ -302,7 +300,6 @@ def test_submissionless_run_stays_retryable(seeded_registry, monkeypatch, tmp_pa
     became agent_run with a null submission — and the next --retry-abandoned
     skipped the agent, went straight to grading, and failed in 0s forever.
     """
-    monkeypatch.setattr(batch.artifacts, "RESULTS_DIR", tmp_path / "results")
     monkeypatch.setattr(batch, "_run_agent", lambda *, run, data_dir: batch.AgentOutputs(
         submission_path=None, journal_path=None, metrics={}))
 
@@ -322,7 +319,6 @@ def test_grading_report_is_preserved_to_the_volume(seeded_registry, monkeypatch,
     report = tmp_path / "grading_report.json"
     report.write_text('{"competition_id": "comp", "score": 0.5}')
 
-    monkeypatch.setattr(batch.artifacts, "RESULTS_DIR", tmp_path / "results")
     monkeypatch.setattr(batch, "_run_agent", lambda *, run, data_dir: batch.AgentOutputs(
         submission_path=str(submission), journal_path=None, metrics={}))
     monkeypatch.setattr(batch, "_grade", lambda **kw: report)
@@ -331,3 +327,31 @@ def test_grading_report_is_preserved_to_the_volume(seeded_registry, monkeypatch,
 
     preserved = batch.artifacts.run_root() / "comp_B2_0" / "grading_report.json"
     assert preserved.is_file()
+
+
+def test_terminate_refuses_when_results_are_on_the_boot_disk(seeded_registry, monkeypatch):
+    """Terminating with results on ephemeral storage destroys the whole run set.
+
+    Every earlier mechanism for this failed silently — a skipped symlink, an
+    unset env var — so the check sits immediately before the irreversible step
+    and leaves the box running instead.
+    """
+    calls = []
+    monkeypatch.setattr(batch, "_results_survive_termination", lambda: False)
+    monkeypatch.setattr(
+        batch.lambda_ctl, "terminate_instance",
+        lambda *, instance_id: calls.append(instance_id),
+    )
+    batch.run_batch(
+        data_dir=Path("/data"), execute=lambda *, run, data_dir: None,
+        terminate_on_done=True, instance_id="i-123",
+    )
+    assert calls == []  # box left running; results recoverable
+
+
+def test_results_root_follows_the_env_override(monkeypatch, tmp_path):
+    monkeypatch.setenv(registry.RESULTS_ENV, str(tmp_path / "volume"))
+    assert registry.results_root() == tmp_path / "volume"
+    assert registry.registry_path().parent == tmp_path / "volume"
+    monkeypatch.delenv(registry.RESULTS_ENV)
+    assert registry.results_root() == registry.RESULTS_DIR

@@ -335,6 +335,29 @@ def execute_run(*, run: dict, data_dir: Path) -> dict:
     return advance.record_graded(run_key=run_key, report=report)
 
 
+def _results_survive_termination() -> bool:
+    """Is the results root on a different filesystem than the repo?
+
+    The guard exists because every previous mechanism for this failed silently:
+    setup_cloudbox.sh's symlink was skipped with a warning buried in a long
+    provisioning log, and an unset env var looks identical to a correct one until
+    the instance is gone. Comparing st_dev is the only check that reflects
+    physical reality rather than intent — whatever the configuration claims, the
+    files are either on the volume or they are not.
+
+    Terminating with results on the boot disk destroys every artifact the run
+    produced, so the check runs immediately before the irreversible step.
+    """
+    results = registry.results_root()
+    if not results.exists():
+        return False
+    repo = Path(__file__).resolve().parent.parent
+    try:
+        return results.resolve().stat().st_dev != repo.stat().st_dev
+    except OSError:
+        return False
+
+
 def _abandon(*, run: dict, error: str) -> None:
     """Park a failed run: mark it abandoned + record the error, keeping the phase
     status so a later --retry-abandoned resumes at the right point."""
@@ -406,6 +429,16 @@ def run_batch(
             raise SystemExit(
                 "--terminate-on-done requires --instance-id (from the launch response)"
             )
+        if not _results_survive_termination():
+            logger.error(
+                "REFUSING to terminate %s: results root %s is on the boot disk. "
+                "Set %s to a path on the persistent volume, or rsync the results "
+                "off the box first. The instance is left running.",
+                instance_id,
+                registry.results_root(),
+                registry.RESULTS_ENV,
+            )
+            return summary
         logger.info("terminating instance %s", instance_id)
         lambda_ctl.terminate_instance(instance_id=instance_id)
 

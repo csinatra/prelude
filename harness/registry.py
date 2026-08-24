@@ -42,6 +42,7 @@ import os
 from pathlib import Path
 
 RESULTS_DIR = Path("results")
+RESULTS_ENV = "PRELUDE_RESULTS_DIR"
 STAGE_ENV = "PRELUDE_REGISTRY_STAGE"
 DEFAULT_STAGE = "dev"
 
@@ -50,9 +51,26 @@ def active_stage() -> str:
     return os.environ.get(STAGE_ENV) or DEFAULT_STAGE
 
 
+def results_root() -> Path:
+    """Where run artifacts and registries are written.
+
+    Separate from the repo's `results/` on purpose. That directory holds
+    git-tracked provenance (the corpus manifest, retrieval characterization)
+    which arrives with the clone; run outputs are generated data that on the
+    cloud box must live on the persistent volume, since the boot disk dies with
+    the instance. They shared a directory only by accident, and that accident
+    defeated the symlink setup_cloudbox.sh used to create: git makes `results/`
+    first, so the link could never be made.
+
+    Resolved per call, never bound at import, so a test or an operator can
+    change it without re-importing.
+    """
+    return Path(os.environ.get(RESULTS_ENV) or RESULTS_DIR)
+
+
 def registry_path(*, stage: str | None = None) -> Path:
     """Path to a stage's registry; the active stage when none is named."""
-    return RESULTS_DIR / f"runs_{stage or active_stage()}.jsonl"
+    return results_root() / f"runs_{stage or active_stage()}.jsonl"
 
 
 def append_run(*, entry: dict, stage: str | None = None) -> None:

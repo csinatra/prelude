@@ -36,11 +36,8 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-from harness.registry import active_stage
+from harness.registry import active_stage, results_root
 from ingest.export_corpus import fingerprint as corpus_fingerprint
-
-RESULTS_DIR = Path("results")
-
 
 def run_root() -> Path:
     """Artifacts live under the active stage, beside that stage's registry.
@@ -51,7 +48,7 @@ def run_root() -> Path:
     the per-stage registry in harness/registry.py, and it must resolve the stage
     the same way or a registry row's spec_path would not point at its spec.
     """
-    return RESULTS_DIR / active_stage()
+    return results_root() / active_stage()
 
 
 def _git_provenance() -> dict:

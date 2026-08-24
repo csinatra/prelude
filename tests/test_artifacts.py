@@ -3,10 +3,11 @@
 import json
 
 from analysis import artifacts
+from harness import registry
 
 
 def test_save_artifacts_writes_manifest(tmp_path, monkeypatch):
-    monkeypatch.setattr(artifacts, "RESULTS_DIR", tmp_path)
+    monkeypatch.setattr(registry, "RESULTS_DIR", tmp_path)
     monkeypatch.setenv("LLM_PROVIDER", "anthropic")
     monkeypatch.setenv("MODEL", "claude-haiku-4-5-20251001")
 
