@@ -22,6 +22,8 @@
 #   - The base image's heavy-deps stack (tensorflow/torch) fails to build; the
 #     smoke + Lite runs don't need it, so it's off by default here. Real eval
 #     runs that need it must first resolve the heavy-deps build ([confirm]).
+#   - prelude needs its OWN venv on the box (2026-08-24) — the batch driver runs
+#     from this repo, and prelude requires >=3.12 while mle-bench pins 3.11.
 #
 # Required env:
 #   ANTHROPIC_API_KEY   — agent model calls from inside the container (AIDE)
@@ -83,6 +85,23 @@ cd "$WORK_DIR"
 # ── prelude (this repo) ────────────────────────────────────────────────
 if [ ! -d prelude ]; then git clone "$PRELUDE_REPO"; fi
 cd prelude && git pull --ff-only && cd ..
+
+# prelude's own environment. The box runs the batch driver (harness.batch) out
+# of this repo, so its deps have to be installed here too — a separate venv from
+# mle-bench's, which is pinned to 3.11 while prelude requires >=3.12. Omitted on
+# the first provision, so the first drain died on `ModuleNotFoundError: dotenv`
+# after the box was otherwise fully built.
+#
+# uv installs itself to ~/.local/bin, which a NON-interactive shell (`ssh box
+# '...'`) does not have on PATH — the profile that adds it is only read by login
+# shells. Spelled out absolutely so this works under both.
+UV="$HOME/.local/bin/uv"
+if [ ! -x "$UV" ]; then
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+fi
+# --frozen: install uv.lock exactly, never silently re-resolve. The lock is what
+# makes an eval run reproducible (pyproject carries lower bounds only).
+(cd prelude && "$UV" sync --frozen)
 
 # Run outputs (registry + artifacts + logs) belong on the mounted volume, not
 # the ephemeral boot disk: the queue/resume/abandon model needs the registry to
@@ -166,5 +185,7 @@ echo "     .venv/bin/python run_agent.py --agent-id aide-prelude/dev \\"
 echo "       --competition-set experiments/splits/random-acts-of-pizza.txt --data-dir \$MLEBENCH_DATA_DIR"
 echo "     (create the split file: echo random-acts-of-pizza > experiments/splits/random-acts-of-pizza.txt)"
 echo "  3. Condition runs: mount the run's spec.md at /home/spec/spec.md"
-echo "  4. Drain the queue back-to-back once the seams are confirmed:"
-echo "     python -m harness.batch --data-dir \$MLEBENCH_DATA_DIR --terminate-on-done --instance-id <id>"
+echo "  4. Drain the queue back-to-back once the seams are confirmed (prelude's"
+echo "     venv, not mle-bench's — they are different Python versions):"
+echo "     cd $WORK_DIR/prelude && .venv/bin/python -m harness.batch \\"
+echo "       --data-dir \$MLEBENCH_DATA_DIR --terminate-on-done --instance-id <id>"
