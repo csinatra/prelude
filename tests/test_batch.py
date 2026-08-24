@@ -293,3 +293,21 @@ def test_run_agent_missing_spec_raises(monkeypatch, tmp_path):
                  "spec_path": str(tmp_path / "missing.md")},
             data_dir=Path("/data"),
         )
+
+
+def test_submissionless_run_stays_retryable(seeded_registry, monkeypatch, tmp_path):
+    """A run that produced nothing must not advance to agent_run.
+
+    Regression: record_agent_run fired before the submission check, so the row
+    became agent_run with a null submission — and the next --retry-abandoned
+    skipped the agent, went straight to grading, and failed in 0s forever.
+    """
+    monkeypatch.setattr(batch.artifacts, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr(batch, "_run_agent", lambda *, run, data_dir: batch.AgentOutputs(
+        submission_path=None, journal_path=None, metrics={}))
+
+    with pytest.raises(RuntimeError, match="no submission"):
+        batch.execute_run(run={"run_key": "comp_B2_0", "competition_id": "comp",
+                               "status": "spec_built"}, data_dir=Path("/data"))
+
+    assert registry.load_runs()["comp_B2_0"].get("status") != "agent_run"

@@ -288,6 +288,13 @@ def execute_run(*, run: dict, data_dir: Path) -> dict:
             solution_path=outputs.solution_path,
             extra_paths=(outputs.token_usage_path, *outputs.viz_paths),
         )
+        # Check BEFORE advancing status. Recording agent_run for a run that
+        # produced nothing leaves it unretryable: the next --retry-abandoned
+        # sees agent_run, skips the agent entirely, and fails at grading in 0s.
+        # Artifacts are preserved above either way, so a failed run is still
+        # inspectable.
+        if not outputs.submission_path:
+            raise RuntimeError(f"{run_key}: agent produced no submission")
         advance.record_agent_run(
             run_key=run_key,
             submission_path=outputs.submission_path,
