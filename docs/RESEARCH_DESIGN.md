@@ -498,7 +498,11 @@ Each measure is defined once, under the hypothesis it serves.
 - *Higher resolution:* leaderboard percentile of the final submission, and
   valid-submission rate (fraction of runs producing a gradeable submission).
   These carry more information per run than a binary medal and guard against a
-  medal difference that is really threshold luck.
+  medal difference that is really threshold luck. The percentile — the fraction
+  of leaderboard teams the submission beats, direction-aware so higher is always
+  better — is not in mle-bench's grading report and is computed by the batch
+  driver at grade time, because the leaderboards are git-lfs files inside the
+  mle-bench checkout and exist only on the cloud box.
 
 **H2 (mechanism).** Whether C2's flags reached the agent's behavior. Measured by
 per-flag judging against the frozen rubric, aggregated per category; see
@@ -521,6 +525,20 @@ Aggregation across competitions uses a scale-free statistic:
   time-to-first-valid-submission secondary. Steps lead because wall-clock varies
   with data size, with whichever model the agent happens to try, and with GPU
   contention, none of which reflect search efficiency.
+- *Descriptive, added 2026-08-24 pre-run:* steps and time to the run's **best**
+  validation score, the pair to first-valid — first-valid is how fast the agent
+  reached something that works, best is how fast it reached the best thing it
+  found. Both summarize the per-step score curve already collected below, so
+  this introduces no new comparison, and it carries no separation criterion.
+  Read it as censored: under a fixed step budget "best" is best-so-far, biased
+  toward runs that happened to peak early.
+- *Timing anchor.* All elapsed measures run from the first LLM call, recorded in
+  the token side-channel, to the milestone node's completion (`ctime +
+  exec_time`). AIDE stamps a node's `ctime` when its drafting call *returns*, so
+  the journal alone cannot see the first draft: measuring from the earliest
+  `ctime` reports exactly 0.0 whenever node 0 is already valid, which is the
+  outcome a good spec is most likely to produce and the case this hypothesis most
+  needs to resolve. Each run records which anchor was available.
 - *Cost, deliberately not the headline:* spec-build cost against agent cost is
   reported but does not carry the claim. It depends on the model pair and on GPU
   rental pricing, both environment-specific and liable to date, and the
@@ -602,8 +620,9 @@ H3, not here.
   wall-clock, LLM call count, input/output tokens — per call, in stage
   order, so per-stage attribution is free.
 - *Agent side* (registry via `harness.advance`, journal preserved as the
-  trajectory artifact): run wall-clock, AIDE steps used,
-  time-to-first-valid-submission, and per-step score/time curves derived
+  trajectory artifact): run wall-clock, AIDE steps used, the first-valid and
+  best milestones above, token totals matching the spec side's, and per-step
+  score/time curves derived
   from the AIDE journal — enabling trajectory comparison across conditions
   and problem types. Per-step agent *token* usage is not in AIDE's journal
   by default; the aide-prelude Anthropic backend appends each call's usage
