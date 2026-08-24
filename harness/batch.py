@@ -65,6 +65,11 @@ DONE_STATUS = "graded"
 NEEDS_AGENT_STATUSES = {"spec_built", "registered"}
 
 MLEBENCH_DIR = Path(os.environ.get("MLEBENCH_DIR", str(Path.home() / "work" / "mle-bench")))
+# mle-bench lives in its own 3.11 venv (setup_cloudbox.sh); prelude has a
+# separate one. Bare `python` picks up whichever is on PATH — which is prelude's
+# under `.venv/bin/python -m harness.batch`, and lacks mle-bench's dependencies.
+MLEBENCH_PYTHON = MLEBENCH_DIR / ".venv" / "bin" / "python"
+MLEBENCH_CLI = MLEBENCH_DIR / ".venv" / "bin" / "mlebench"
 CONTAINER_CONFIG = Path(__file__).resolve().parent.parent / "cloudbox" / "container_config.json"
 
 
@@ -122,7 +127,7 @@ def _run_agent(*, run: dict, data_dir: Path) -> AgentOutputs:
     comp_set.write_text(run["competition_id"] + "\n")
 
     argv = [
-        "python", "run_agent.py",
+        str(MLEBENCH_PYTHON), "run_agent.py",
         "--agent-id", run.get("agent_id", "aide-prelude"),
         "--competition-set", str(comp_set),
         "--data-dir", str(data_dir),
@@ -227,7 +232,7 @@ def _grade(*, run: dict, submission_path: str, data_dir: Path, report_dir: Path)
         + "\n"
     )
     argv = [
-        ".venv/bin/mlebench", "grade",
+        str(MLEBENCH_CLI), "grade",
         "--submission", str(jsonl),
         "--output-dir", str(report_dir),
         "--data-dir", str(data_dir),

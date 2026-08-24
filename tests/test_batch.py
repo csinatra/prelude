@@ -183,6 +183,28 @@ def test_run_agent_sets_spec_env_for_bc(monkeypatch, tmp_path):
     assert "--competition-set" in captured["argv"]  # file, not --competition
 
 
+def test_run_agent_uses_mlebenchs_own_interpreter(monkeypatch, tmp_path):
+    """Bare `python` resolves to prelude's venv, which lacks mle-bench's deps.
+
+    Regression: the driver invoked `python run_agent.py`, which under
+    `.venv/bin/python -m harness.batch` picked up prelude's interpreter and died
+    on `ModuleNotFoundError: py7zr` before any container started.
+    """
+    captured = {}
+    monkeypatch.setattr(batch, "MLEBENCH_DIR", tmp_path)
+    monkeypatch.setattr(batch, "MLEBENCH_PYTHON", tmp_path / ".venv" / "bin" / "python")
+    monkeypatch.setattr(batch.subprocess, "run", lambda argv, **kw: captured.update(argv=argv))
+    monkeypatch.setattr(batch, "_locate_outputs",
+                        lambda *, run_output_dir: (None, None, None, None))
+
+    batch._run_agent(
+        run={"run_key": "comp_A_0", "competition_id": "comp"},
+        data_dir=Path("/data"),
+    )
+    assert captured["argv"][0] == str(tmp_path / ".venv" / "bin" / "python")
+    assert "--container-config" in captured["argv"]  # benchmark resources, not Docker defaults
+
+
 def test_execute_run_preserves_agent_artifacts_to_volume(seeded_registry, monkeypatch, tmp_path):
     # mle-bench writes these under an ephemeral run dir; execute_run must copy
     # them into results/{run_key}/ (the persistent volume) so --terminate-on-done
