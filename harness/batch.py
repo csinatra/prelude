@@ -139,12 +139,8 @@ def _run_agent(*, run: dict, data_dir: Path) -> AgentOutputs:
         "--container-config", str(CONTAINER_CONFIG),
     ]
     env = os.environ.copy()
-    spec_path = run.get("spec_path")  # relative to the prelude repo = the batch driver's cwd
-    if spec_path:
-        spec_abs = Path(spec_path).resolve()
-        if not spec_abs.is_file():
-            raise RuntimeError(f"{run['run_key']}: spec not found at {spec_abs}")
-        env["PRELUDE_SPEC_PATH"] = str(spec_abs)
+    if run.get("spec_path"):  # presence = this condition has a spec; A does not
+        env["PRELUDE_SPEC_PATH"] = str(_resolve_spec(run=run))
     logger.info("agent argv: %s (spec=%s)", " ".join(argv), env.get("PRELUDE_SPEC_PATH", "-"))
     started_at = time.time()
     subprocess.run(argv, cwd=MLEBENCH_DIR, check=True, env=env)
@@ -198,6 +194,26 @@ def _locate_run_log(*, run_output_dir: Path) -> tuple[str, ...]:
     ephemeral disk."""
     hit = next(run_output_dir.glob("**/run.log"), None)
     return (str(hit),) if hit else ()
+
+
+def _resolve_spec(*, run: dict) -> Path:
+    """Where this run's spec lives on THIS machine.
+
+    The registry's `spec_path` is written by the dev machine relative to its own
+    results root, so it does not resolve on a box whose root is the persistent
+    volume. The canonical location is derivable — artifacts always live at
+    run_root()/{run_key}/ — so the registry field is treated as a flag for
+    whether the condition has a spec at all, and the literal path only as a
+    fallback for rows written before the roots could differ.
+    """
+    run_key = run["run_key"]
+    canonical = artifacts.run_root() / run_key / "spec.md"
+    if canonical.is_file():
+        return canonical.resolve()
+    literal = Path(run["spec_path"])
+    if literal.is_file():
+        return literal.resolve()
+    raise RuntimeError(f"{run_key}: spec not found at {canonical} or {literal}")
 
 
 def _locate_run_group(*, started_at: float) -> Path | None:

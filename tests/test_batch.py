@@ -355,3 +355,32 @@ def test_results_root_follows_the_env_override(monkeypatch, tmp_path):
     assert registry.registry_path().parent == tmp_path / "volume"
     monkeypatch.delenv(registry.RESULTS_ENV)
     assert registry.results_root() == registry.RESULTS_DIR
+
+
+def test_spec_resolves_against_this_machines_results_root(monkeypatch, tmp_path):
+    """spec_path is written relative to the DEV machine's root.
+
+    Regression: with the box writing to a persistent volume, the stored
+    `results/dev/.../spec.md` resolved against the repo and every run failed
+    with "spec not found" before starting a container.
+    """
+    volume = tmp_path / "volume"
+    spec = volume / "dev" / "comp_C2_0" / "spec.md"
+    spec.parent.mkdir(parents=True)
+    spec.write_text("ADVISOR CONTEXT\n")
+    monkeypatch.setenv(registry.RESULTS_ENV, str(volume))
+
+    captured = {}
+    monkeypatch.setattr(batch, "MLEBENCH_DIR", tmp_path)
+    monkeypatch.setattr(batch.subprocess, "run",
+                        lambda argv, **kw: captured.update(env=kw.get("env")))
+    monkeypatch.setattr(batch, "_locate_run_group", lambda *, started_at: tmp_path)
+    monkeypatch.setattr(batch, "_locate_outputs",
+                        lambda *, run_output_dir: ("/x/submission.csv", None, None, None))
+
+    batch._run_agent(
+        run={"run_key": "comp_C2_0", "competition_id": "comp",
+             "spec_path": "results/dev/comp_C2_0/spec.md"},  # the dev machine's path
+        data_dir=Path("/data"),
+    )
+    assert captured["env"]["PRELUDE_SPEC_PATH"] == str(spec.resolve())
