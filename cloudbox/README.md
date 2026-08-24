@@ -27,13 +27,34 @@ instance type changes.**
 Reported alongside results as deviations from the reference: fewer vCPUs and
 less RAM than the reference host, and a shorter runtime (budget-constrained).
 
-## GPU under Sysbox is unverified
+## Why `runc` rather than mle-bench's `sysbox-runc`
 
-mle-bench runs agents under the `sysbox-runc` runtime, and Sysbox has not
-historically coexisted with NVIDIA's container runtime. The `device_requests`
-above are therefore a hypothesis until a run confirms a container actually sees
-a GPU.
+Upstream runs agents under Sysbox. Sysbox cannot reach a GPU on this box, and
+the reason is structural rather than a misconfiguration (diagnosed 2026-08-24,
+NVIDIA Container Toolkit 1.18.1, Docker 29.2.1, driver 580.105.08):
 
-If it cannot, the choice is between Sysbox's isolation and GPU training. That is
-a real trade — Sysbox is what lets the agent run Docker-in-Docker safely — and
-the decision belongs in DECISIONS.md rather than in a silent config edit.
+- Sysbox remaps user namespaces, so NVIDIA's OCI hooks cannot read containerd's
+  state directory — every GPU container dies at `Running hook #0 … failed to
+  open OCI spec file … permission denied`.
+- CDI does not route around it: the `nvidia-cdi-hook` entries fail the same way.
+  Specs live in **both** `/etc/cdi` and `/var/run/cdi`, and the latter is the
+  live one.
+- With the hooks stripped the container starts, but `update-ldcache` and
+  `create-symlinks` are exactly what made the injected libraries resolvable, so
+  `nvidia-smi` cannot find `libnvidia-ml.so.1`.
+- Under `runc`, CDI and `--gpus` both work unmodified.
+
+Keeping Sysbox would mean replicating NVIDIA's hooks ourselves — an entrypoint
+wrapper running `ldconfig` and synthesizing versioned symlinks, plus keeping two
+CDI specs stripped across reboots (`/var/run/cdi` is tmpfs) and driver updates.
+That is bespoke infrastructure standing in for the vendor's own tooling, with
+several silent-failure modes during an eval run.
+
+What Sysbox provides is unprivileged Docker-in-Docker and userns isolation
+against container escape. AIDE writes training scripts; it does not spawn
+containers. The isolation guards a threat model — untrusted submissions on a
+shared harness — that does not apply to our own agent on a disposable instance.
+
+`agents/run.py` branches artifact extraction on the runtime and handles both, so
+this is a supported configuration upstream, not a workaround. It is still a
+deviation from the reference harness and is reported as one.
