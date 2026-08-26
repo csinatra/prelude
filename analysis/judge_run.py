@@ -15,35 +15,31 @@ is empty exactly when the judge saw nothing, so a human could verify evidence
 the judge found but never discover evidence it missed — the false-negative case
 would be invisible, and agreement inflated rather than measured.
 
-**Why the bundle is bounded at all.** AIDE runs at `step_count: 500`
-(cloudbox/agents/aide-prelude/config.yaml), so a full journal fits neither a
-judge's context nor a reviewer's afternoon. The bundle is the best solution plus
-its ancestor chain in the search tree — the lineage that produced the submitted
-code, selected structurally rather than by any rater.
+**Why the bundle is one node, not a lineage.** The bundle is the submitted
+solution plus the best node's own analysis and output — a fixed shape, identical
+for every flag in every run. It was previously the best node's *ancestor chain*,
+which is gone for two reasons.
 
-**What the bundle's two halves each carry.** The rubric's *action* criterion —
-the `not_acted_on` / `acted_on_*` boundary, which is what H2 rests on — is
-judged against the flag and the **solution**: an identifiable design choice
-addressing the flag's mechanism. The solution is always supplied whole, so that
-judgment does not depend on how deep the chain runs.
+First, chain depth is a property of where the best node happens to land: 1 node
+in one observed run, potentially dozens at a 500-step budget. A flag judged
+against a deep chain has more evidence than an identical flag judged against a
+shallow one, so a rate computed that way partly measures search-tree shape
+rather than agent behavior — and the distortion grows with the step budget.
 
-The logs matter only for the further step to `acted_on_positive`, and the rubric
-admits three evidence types for it: a failure occurring before a mitigation and
-resolved after (which the chain does carry), ablation-like comparisons within
-the run, and validation-vs-leaderboard gap behavior. The ancestor chain serves
-the first and is a poor fit for the second, since an ablation-like comparison
-usually sits between *siblings* — one node with the mitigation against one
-without — which lineage excludes by construction. See docs/JUDGE_VALIDATION.md
-for the consequence; the limit is in what evidence reaches the raters, not in
-the rubric.
+Second, lineage answers the wrong question. It records how the agent responded
+to its own prior results, which is credit assignment over a reward signal, not
+evidence about the injected specification. H2's causal purchase comes from
+between-condition comparison under the design (see the base-rate counterfactual
+in RESEARCH_DESIGN.md), never from reconstructing why one instance occurred.
 
-The caps below are placeholders, pinned against a measured journal before
-judging begins; nothing has run at full budget yet.
+The rubric's action criterion is judged against the flag and the **solution**,
+which is always supplied whole, so nothing H2 rests on depended on the chain.
 
 Usage:
     python -m analysis.judge_run --run-key <key> [--run-key ...]
     python -m analysis.judge_run --all-c2                       # every C2 run in the stage
     python -m analysis.judge_run --all-c2 --combined results/judgments.json
+    python -m analysis.judge_run --all-c2 --base-rate B2        # + the counterfactual
 """
 
 import argparse
@@ -56,11 +52,9 @@ from analysis.judge import FlagJudgment, aggregate_by_category, judge_flags, jud
 
 logger = logging.getLogger(__name__)
 
-# Pin against a real journal before judging (see module docstring). DEPTH is how
-# many nodes of ancestry are retained; NODE_CHARS caps one node's captured
-# output, since a single failing step can emit a traceback larger than the rest
-# of the chain combined.
-EVIDENCE_CHAIN_DEPTH = 12
+# Caps one node's captured output, since a single failing step can emit a
+# traceback larger than everything else combined. Unlike the retired chain
+# depth, this does not vary with the step budget: the bundle is always one node.
 EVIDENCE_NODE_CHARS = 4000
 
 
@@ -107,34 +101,13 @@ def _metric(*, node: dict) -> tuple[float | None, bool]:
     return metric, True
 
 
-def _ancestor_chain(*, nodes: list[dict], solution: str) -> list[dict]:
-    """The submitted node and its ancestors, oldest first, capped at CHAIN_DEPTH.
-
-    Falls back to the last CHAIN_DEPTH nodes when the journal carries no usable
-    parent links. The fallback stays rater-independent — positional, not
-    content-selected — so evidence parity holds either way.
-    """
-    best = _best_node(nodes=nodes, solution=solution)
-    if best is None:
-        return []
-    by_id = {node["id"]: node for node in nodes if "id" in node}
-    if not by_id or "id" not in best:
-        return nodes[-EVIDENCE_CHAIN_DEPTH:]
-    chain = [best]
-    seen = {best["id"]}
-    current = best
-    while len(chain) < EVIDENCE_CHAIN_DEPTH:
-        parent_id = current.get("parent")
-        if parent_id is None or parent_id not in by_id or parent_id in seen:
-            break
-        current = by_id[parent_id]
-        seen.add(parent_id)
-        chain.append(current)
-    return list(reversed(chain))
-
-
 def chain_nodes(*, run_dir: Path, solution: str) -> list[dict]:
-    """Ancestor-chain nodes for one run, normalized for rendering."""
+    """The evidence node for one run, normalized for rendering.
+
+    A list of at most one element: the node that produced the submitted
+    solution. Kept as a list because the review page renders a sequence, and
+    because the shape is what guarantees every item is judged on equal evidence.
+    """
     journal_path = run_dir / "journal.json"
     if not journal_path.is_file():
         return []
@@ -143,15 +116,17 @@ def chain_nodes(*, run_dir: Path, solution: str) -> list[dict]:
     except Exception:
         logger.exception("journal parse failed: %s", journal_path)
         return []
+    best = _best_node(nodes=nodes, solution=solution)
+    if best is None:
+        return []
     return [
         {
-            "step": node.get("step"),
-            "is_buggy": bool(node.get("is_buggy")),
-            "metric": _metric(node=node)[0],
-            "analysis": str(node.get("analysis", "")),
-            "term_out": _term_out(node=node)[:EVIDENCE_NODE_CHARS],
+            "step": best.get("step"),
+            "is_buggy": bool(best.get("is_buggy")),
+            "metric": _metric(node=best)[0],
+            "analysis": str(best.get("analysis", "")),
+            "term_out": _term_out(node=best)[:EVIDENCE_NODE_CHARS],
         }
-        for node in _ancestor_chain(nodes=nodes, solution=solution)
     ]
 
 
@@ -161,7 +136,7 @@ def _term_out(*, node: dict) -> str:
     aideml exposes `term_out` as a property but serializes the underlying
     `_term_out` attribute, so a journal on disk carries only the underscored
     name. Reading the property name silently yields "" for every node — and the
-    rubric's `acted_on_positive` rests on observed output, so that would look
+    rubric's evidence requirement rests on observed output, so that would look
     like a judge that never finds positive evidence rather than a missing field.
     """
     return str(node.get("_term_out") or node.get("term_out") or "")
@@ -183,17 +158,31 @@ def evidence_bundle(*, run_dir: Path) -> tuple[str, str]:
 
 
 def _records(
-    *, run_key: str, flags: list[dict], judgments: list[FlagJudgment], solution: str, logs: str
+    *,
+    flag_run_key: str,
+    solution_run_key: str,
+    flags: list[dict],
+    judgments: list[FlagJudgment],
+    solution: str,
+    logs: str,
 ) -> list[dict]:
     """One record per judged flag, shaped for analysis.judge_agreement.
 
-    `item_id` is run-qualified because the agreement sample is drawn across runs
-    and flag ids repeat between them.
+    `item_id` is qualified by BOTH run keys: the same flag is judged against
+    several conditions' solutions for the base-rate comparison, so qualifying by
+    the flag's own run alone would collide.
+
+    `condition` is recorded here, after judging, purely for analysis. It is never
+    in the judge's prompt — see judge_flags.
     """
+    condition = solution_run_key.split("_")[-2] if "_" in solution_run_key else ""
     return [
         {
-            "item_id": f"{run_key}#{flag.get('flag_id', index)}",
-            "run_key": run_key,
+            "item_id": f"{flag_run_key}#{flag.get('flag_id', index)}@{solution_run_key}",
+            "run_key": flag_run_key,
+            "solution_run_key": solution_run_key,
+            "condition": condition,
+            "is_base_rate": flag_run_key != solution_run_key,
             "category": flag["category"],
             "explanation": flag["explanation"],
             "classification": judgment.classification,
@@ -207,30 +196,59 @@ def _records(
     ]
 
 
-def judge_run(*, run_key: str) -> dict:
-    """Judge one run's flags against its preserved artifacts; write judgments.json."""
-    run_dir = run_root() / run_key
-    flags = json.loads((run_dir / "pipeline_output.json").read_text()).get("assumption_flags", [])
+def _flags_for(*, run_key: str) -> list[dict]:
+    path = run_root() / run_key / "pipeline_output.json"
+    if not path.is_file():
+        return []
+    return json.loads(path.read_text()).get("assumption_flags", [])
+
+
+def judge_run(*, run_key: str, solution_run_key: str | None = None) -> dict:
+    """Judge one run's flags against preserved artifacts; write judgments.
+
+    `solution_run_key` defaults to the flags' own run. Naming a different run
+    judges the same flags against another condition's solution, which is the
+    base-rate counterfactual: the rate at which the flagged mechanisms are
+    addressed by an agent that never received the specification
+    (RESEARCH_DESIGN.md, H2). Those judgments are written into the *solution's*
+    run directory, so a condition's directory holds what was judged against it.
+    """
+    solution_run_key = solution_run_key or run_key
+    is_base_rate = solution_run_key != run_key
+    flags = _flags_for(run_key=run_key)
     if not flags:
         logger.info("no flags to judge: %s", run_key)
         return {"run_key": run_key, "judged": 0}
-    solution, logs = evidence_bundle(run_dir=run_dir)
+    solution_dir = run_root() / solution_run_key
+    solution, logs = evidence_bundle(run_dir=solution_dir)
     if not solution:
         # Without the solution the rubric's classes cannot be distinguished, so a
         # run missing its artifacts is skipped rather than judged as not_acted_on.
-        logger.warning("no preserved solution, skipping: %s", run_key)
-        return {"run_key": run_key, "judged": 0, "skipped": "no solution artifact"}
+        logger.warning("no preserved solution, skipping: %s", solution_run_key)
+        return {"run_key": solution_run_key, "judged": 0, "skipped": "no solution artifact"}
     judgments = judge_flags(flags=flags, solution=solution, logs=logs)
     payload = {
         "run_key": run_key,
+        "solution_run_key": solution_run_key,
+        "is_base_rate": is_base_rate,
         "provenance": judge_provenance(),
         "by_category": aggregate_by_category(flags=flags, judgments=judgments),
         "judgments": _records(
-            run_key=run_key, flags=flags, judgments=judgments, solution=solution, logs=logs
+            flag_run_key=run_key,
+            solution_run_key=solution_run_key,
+            flags=flags,
+            judgments=judgments,
+            solution=solution,
+            logs=logs,
         ),
     }
-    (run_dir / "judgments.json").write_text(json.dumps(payload, indent=2))
-    return {"run_key": run_key, "judged": len(payload["judgments"])}
+    name = "judgments.json" if not is_base_rate else f"judgments_baserate_{run_key}.json"
+    (solution_dir / name).write_text(json.dumps(payload, indent=2))
+    return {
+        "run_key": run_key,
+        "solution_run_key": solution_run_key,
+        "judged": len(payload["judgments"]),
+    }
 
 
 def c2_run_keys() -> list[str]:
@@ -242,12 +260,21 @@ def c2_run_keys() -> list[str]:
     )
 
 
+def paired_run_key(*, run_key: str, condition: str) -> str:
+    """The same competition and seed under another condition."""
+    competition, _, seed = run_key.rsplit("_", 2)
+    return f"{competition}_{condition}_{seed}"
+
+
 def combine(*, run_keys: list[str], out_path: Path) -> int:
-    """Concatenate per-run judgments into the flat list judge_agreement reads."""
+    """Concatenate every judgments file into the flat list judge_agreement reads.
+
+    Picks up base-rate files alongside each run's own, so the agreement sample
+    and the paired analysis both see conditioned and unconditioned items.
+    """
     records: list[dict] = []
     for run_key in run_keys:
-        path = run_root() / run_key / "judgments.json"
-        if path.is_file():
+        for path in sorted((run_root() / run_key).glob("judgments*.json")):
             records.extend(json.loads(path.read_text())["judgments"])
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(records, indent=2))
@@ -259,6 +286,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-key", action="append", default=[])
     parser.add_argument("--all-c2", action="store_true", help="judge every C2 run in the stage")
+    parser.add_argument(
+        "--base-rate",
+        action="append",
+        default=[],
+        metavar="CONDITION",
+        help="also judge each C2 flag set against this condition's solution "
+        "for the same competition and seed (B2 is the pre-registered control)",
+    )
     parser.add_argument("--combined", help="also write a flat judgments file at this path")
     args = parser.parse_args()
 
@@ -267,5 +302,22 @@ if __name__ == "__main__":
         parser.error("pass --run-key or --all-c2")
     for run_key in run_keys:
         print(judge_run(run_key=run_key))
+        for condition in args.base_rate:
+            print(
+                judge_run(
+                    run_key=run_key,
+                    solution_run_key=paired_run_key(run_key=run_key, condition=condition),
+                )
+            )
     if args.combined:
-        print(f"combined: {combine(run_keys=run_keys, out_path=Path(args.combined))} judgments")
+        # Combine over every run directory touched, not just the flag-side ones:
+        # base-rate judgments live in the control condition's directory.
+        touched = sorted(
+            {key for key in run_keys}
+            | {
+                paired_run_key(run_key=key, condition=condition)
+                for key in run_keys
+                for condition in args.base_rate
+            }
+        )
+        print(f"combined: {combine(run_keys=touched, out_path=Path(args.combined))} judgments")

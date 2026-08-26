@@ -35,18 +35,34 @@ def run_dir(tmp_path, monkeypatch):
     return directory
 
 
-def test_chain_follows_ancestry_not_step_order(run_dir):
-    """The chain is the submitted node's lineage, so a sibling branch is excluded."""
+def test_bundle_is_the_submitted_node_only(run_dir):
+    """The evidence is one node: the one that produced the submitted solution."""
     nodes = judge_run.chain_nodes(run_dir=run_dir, solution="print(1)")
-    assert [node["step"] for node in nodes] == [0, 1]
+    assert [node["step"] for node in nodes] == [1]
 
 
-def test_chain_falls_back_positionally_without_parent_links(run_dir):
-    (run_dir / "journal.json").write_text(
-        json.dumps({"nodes": [{"step": index, "term_out": "x"} for index in range(30)]})
-    )
-    nodes = judge_run.chain_nodes(run_dir=run_dir, solution="unmatched")
-    assert len(nodes) == judge_run.EVIDENCE_CHAIN_DEPTH
+def test_bundle_size_does_not_track_journal_length(run_dir):
+    """Equal evidence per item, whatever the search tree did.
+
+    The retired ancestor chain returned more nodes for a deep best node than a
+    shallow one, so an identical flag could be judged on more evidence in one run
+    than another and the action rate would partly measure tree shape. Chain depth
+    also grows with the step budget, so that distortion would have grown too.
+    """
+    for journal_length in (2, 30, 300):
+        (run_dir / "journal.json").write_text(
+            json.dumps(
+                {
+                    "nodes": [
+                        {"id": str(index), "parent": str(index - 1) if index else None,
+                         "step": index, "is_buggy": False,
+                         "metric": {"value": index / 1000, "maximize": True}}
+                        for index in range(journal_length)
+                    ]
+                }
+            )
+        )
+        assert len(judge_run.chain_nodes(run_dir=run_dir, solution="unmatched")) == 1
 
 
 def test_node_output_is_capped(run_dir):
@@ -67,16 +83,18 @@ def test_judge_run_writes_records_for_every_flag(run_dir, monkeypatch):
         judge_run,
         "judge_flags",
         lambda **kwargs: [
-            FlagJudgment(classification="acted_on_unclear", evidence_quote="q", reasoning="r")
+            FlagJudgment(classification="acted_on", evidence_quote="q", reasoning="r")
             for _ in kwargs["flags"]
         ],
     )
     result = judge_run.judge_run(run_key="comp_C2_0")
     assert result["judged"] == 2
     payload = json.loads((run_dir / "judgments.json").read_text())
+    # item_id carries BOTH runs: the same flag is judged against other conditions'
+    # solutions for the base rate, so the flag's own run alone would collide.
     assert [record["item_id"] for record in payload["judgments"]] == [
-        "comp_C2_0#f1",
-        "comp_C2_0#f2",
+        "comp_C2_0#f1@comp_C2_0",
+        "comp_C2_0#f2@comp_C2_0",
     ]
     assert payload["provenance"]["rubric_sha256"]
     assert payload["by_category"]["iid_violation"]["detected"] == 1
@@ -110,7 +128,7 @@ def test_term_out_read_from_the_serialized_key(run_dir):
     """aideml serializes `_term_out`; reading `term_out` yields "" for every node.
 
     Regression: the evidence bundle carried no observed output at all, which the
-    rubric's acted_on_positive depends on.
+    rubric's acted_on depends on.
     """
     (run_dir / "journal.json").write_text(
         json.dumps({"nodes": [{"id": "a", "step": 0, "_term_out": "fold auc=0.61"}]})
@@ -159,3 +177,90 @@ def test_minimizing_metric_picks_the_lowest(run_dir):
     ]}))
     nodes = judge_run.chain_nodes(run_dir=run_dir, solution="no match")
     assert nodes[-1]["metric"] == 0.2
+
+
+# ── base-rate counterfactual (H2 attribution) ───────────────────────────
+
+@pytest.fixture
+def control_run_dir(run_dir):
+    """A B2 run for the same competition and seed, with its own solution."""
+    directory = run_dir.parent / "comp_B2_0"
+    directory.mkdir()
+    (directory / "best_solution.py").write_text("import pandas  # different solution")
+    (directory / "journal.json").write_text(json.dumps(JOURNAL))
+    return directory
+
+
+def test_paired_run_key_swaps_only_the_condition():
+    assert judge_run.paired_run_key(run_key="comp_C2_0", condition="B2") == "comp_B2_0"
+    assert (
+        judge_run.paired_run_key(run_key="random-acts-of-pizza_C2_2", condition="B1")
+        == "random-acts-of-pizza_B1_2"
+    )
+
+
+def test_base_rate_judges_c2_flags_against_the_control_solution(
+    run_dir, control_run_dir, monkeypatch
+):
+    """The flag is unchanged; only the solution differs. That difference is the estimand."""
+    seen = {}
+    monkeypatch.setattr(
+        judge_run,
+        "judge_flags",
+        lambda **kwargs: seen.update(kwargs)
+        or [FlagJudgment(classification="not_acted_on", evidence_quote="", reasoning="r")]
+        * len(kwargs["flags"]),
+    )
+    result = judge_run.judge_run(run_key="comp_C2_0", solution_run_key="comp_B2_0")
+
+    assert result["judged"] == 2
+    assert "import pandas" in seen["solution"]  # the control's code, not C2's
+    assert [flag["flag_id"] for flag in seen["flags"]] == ["f1", "f2"]  # C2's flags
+
+    # Written into the CONTROL's directory: a condition's dir holds what was
+    # judged against it, and C2's own judgments.json must not be overwritten.
+    payload = json.loads((control_run_dir / "judgments_baserate_comp_C2_0.json").read_text())
+    assert payload["is_base_rate"] is True
+    assert not (control_run_dir / "judgments.json").exists()
+    record = payload["judgments"][0]
+    assert record["condition"] == "B2"
+    assert record["is_base_rate"] is True
+    assert record["item_id"] == "comp_C2_0#f1@comp_B2_0"
+
+
+def test_judge_prompt_never_names_the_condition(run_dir, control_run_dir, monkeypatch):
+    """Condition-blind judging (rubric procedure constraints).
+
+    The same flags are judged against conditioned and unconditioned solutions, so
+    a visible condition label would invite expectancy bias in exactly the
+    comparison that carries the attribution claim.
+    """
+    captured = {}
+    monkeypatch.setattr(
+        judge_run,
+        "judge_flags",
+        lambda **kwargs: captured.update(kwargs)
+        or [FlagJudgment(classification="not_acted_on", evidence_quote="", reasoning="r")]
+        * len(kwargs["flags"]),
+    )
+    judge_run.judge_run(run_key="comp_C2_0", solution_run_key="comp_B2_0")
+    assert set(captured) == {"flags", "solution", "logs"}  # no run_key, no condition
+    for value in (captured["solution"], captured["logs"]):
+        assert "comp_B2_0" not in value and "comp_C2_0" not in value
+
+
+def test_combine_picks_up_base_rate_files(run_dir, control_run_dir, monkeypatch):
+    monkeypatch.setattr(
+        judge_run,
+        "judge_flags",
+        lambda **kwargs: [
+            FlagJudgment(classification="acted_on", evidence_quote="q", reasoning="r")
+        ]
+        * len(kwargs["flags"]),
+    )
+    judge_run.judge_run(run_key="comp_C2_0")
+    judge_run.judge_run(run_key="comp_C2_0", solution_run_key="comp_B2_0")
+    out = run_dir.parent / "combined.json"
+    assert judge_run.combine(run_keys=["comp_C2_0", "comp_B2_0"], out_path=out) == 4
+    records = json.loads(out.read_text())
+    assert sum(1 for record in records if record["is_base_rate"]) == 2

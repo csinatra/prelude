@@ -25,8 +25,8 @@ JUDGE_SYSTEM_PREAMBLE = (
 
 
 class FlagJudgment(BaseModel):
-    classification: Literal["not_acted_on", "acted_on_unclear", "acted_on_positive"]
-    evidence_quote: str  # required for acted_on_*; empty for not_acted_on
+    classification: Literal["not_acted_on", "acted_on"]
+    evidence_quote: str  # required for acted_on; empty for not_acted_on
     reasoning: str
 
 
@@ -51,7 +51,10 @@ def judge_provenance() -> dict:
 def judge_flags(*, flags: list[dict], solution: str, logs: str = "") -> list[FlagJudgment]:
     """Judge each flag independently against the frozen rubric.
 
-    Per the rubric, the judge never sees the run's score or medal outcome.
+    Per the rubric the judge never sees the run's score or medal outcome, and
+    never sees which condition produced the solution: the same flags are judged
+    against conditioned and unconditioned solutions for the base-rate
+    comparison, so nothing here may carry a run_key or condition label.
     Call judge_provenance() and store its output beside these judgments.
     """
     rubric = RUBRIC_PATH.read_text()
@@ -63,13 +66,13 @@ def judge_flags(*, flags: list[dict], solution: str, logs: str = "") -> list[Fla
                 f"Flag category: {flag['category']}\n"
                 f"Flag explanation: {flag['explanation']}\n\n"
                 f"Solution code:\n{solution}\n\n"
-                f"Trajectory logs:\n{logs or '(none provided)'}"
+                f"Trajectory excerpt:\n{logs or '(none provided)'}"
             ),
             response_model=FlagJudgment,
             max_tokens=1024,
         )
-        # Rubric: acted_on_* without an evidence quote is invalid.
-        if judgment.classification != "not_acted_on" and not judgment.evidence_quote.strip():
+        # Rubric: acted_on without an evidence quote is invalid.
+        if judgment.classification == "acted_on" and not judgment.evidence_quote.strip():
             judgment = FlagJudgment(
                 classification="not_acted_on",
                 evidence_quote="",
@@ -82,26 +85,27 @@ def judge_flags(*, flags: list[dict], solution: str, logs: str = "") -> list[Fla
 def aggregate_by_category(*, flags: list[dict], judgments: list[FlagJudgment]) -> dict[str, dict]:
     """Roll per-flag judgments up into a per-category table.
 
-    Returns {category: {detected, acted_on, positive, retrieval_grounded}}
+    Returns {category: {detected, action_rate, retrieval_grounded_fraction}}
     where detected is a count and the rest are fractions of detected.
+
+    An action rate is only interpretable beside the base rate from conditions
+    that never received the spec (RESEARCH_DESIGN.md, H2). This function
+    computes one condition's rates; the paired difference is taken in analysis.
     """
     counts: dict[str, dict[str, int]] = defaultdict(
-        lambda: {"detected": 0, "acted_on": 0, "positive": 0, "grounded": 0}
+        lambda: {"detected": 0, "acted_on": 0, "grounded": 0}
     )
     for flag, judgment in zip(flags, judgments):
         row = counts[flag["category"]]
         row["detected"] += 1
-        if judgment.classification != "not_acted_on":
+        if judgment.classification == "acted_on":
             row["acted_on"] += 1
-        if judgment.classification == "acted_on_positive":
-            row["positive"] += 1
         if flag.get("evidence_doc_ids"):
             row["grounded"] += 1
     return {
         category: {
             "detected": row["detected"],
             "action_rate": row["acted_on"] / row["detected"],
-            "positive_rate": row["positive"] / row["detected"],
             "retrieval_grounded_fraction": row["grounded"] / row["detected"],
         }
         for category, row in counts.items()

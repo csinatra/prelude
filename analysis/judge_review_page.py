@@ -27,7 +27,7 @@ import keyword
 import random
 import tokenize
 
-CLASSES = ("not_acted_on", "acted_on_unclear", "acted_on_positive")
+CLASSES = ("not_acted_on", "acted_on")
 SHUFFLE_SEED = 0
 
 _CSS = """
@@ -123,7 +123,7 @@ function save() {
 }
 
 function isDone(entry) {
-  // Complete means the rubric would accept it: an acted_on_* without a quote is
+  // Complete means the rubric would accept it: an acted_on without a quote is
   // void, so it does not count as done.
   return Boolean(entry && entry.label) && !needsQuote(entry);
 }
@@ -275,7 +275,7 @@ def _node_block(*, node: dict) -> str:
     output = _escape(node.get("term_out", ""))
     # The two fields differ in evidentiary weight and the rubric depends on the
     # difference: `analysis` is the agent narrating its own step, which the rubric
-    # calls inadmissible on its own for acted_on_positive, while `term_out` is
+    # calls insufficient on its own, while `term_out` is
     # observed. Presenting them as undifferentiated prose invites a rater to
     # credit fluent self-narration as evidence.
     return (
@@ -293,7 +293,7 @@ def _item_block(*, item: dict) -> str:
         f"<label><input type='radio' name='{item_id}' value='{name}'>{name}</label>"
         for name in CLASSES
     )
-    # The rubric requires a quote for any acted_on_* classification and voids the
+    # The rubric requires a quote for an acted_on classification and voids the
     # classification without one. judge.py enforces that on the LLM; holding the
     # human to a weaker standard would mean the judge's positive labels survived
     # an evidence check the human's never faced.
@@ -303,21 +303,46 @@ def _item_block(*, item: dict) -> str:
         f"<p>{_escape(item['explanation'])}</p>"
         f"<div class='labels'>{radios}</div>"
         f"<textarea class='quote' data-for='{item_id}' rows='2' "
-        f"placeholder='Quote the code or log line supporting this (required for acted_on_*)'>"
+        f"placeholder='Quote the code or log line supporting this (required for acted_on)'>"
         f"</textarea></div>"
     )
 
 
-def _run_block(*, run_key: str, items: list[dict], nodes: list[dict]) -> str:
+def solution_key(*, item: dict) -> str:
+    """Which solution an item was judged against.
+
+    Base-rate items carry a C2 `run_key` (whose flags they are) but a different
+    `solution_run_key` (whose code they were judged against). Grouping by
+    `run_key` would file them under the C2 run and show them C2's solution and
+    trajectory, so the rater would label a flag against artifacts it was never
+    judged on. Grouping is therefore by the solution.
+    """
+    return item.get("solution_run_key") or item.get("run_key", "unknown")
+
+
+def blinded_label(*, solution_run_key: str, index: int) -> str:
+    """Competition kept, condition and seed hidden.
+
+    The rater needs to know which problem they are reading; they must not know
+    which condition produced the solution. The same flags are labelled against
+    conditioned and unconditioned solutions, so a visible `_C2_0` suffix would
+    invite exactly the expectancy bias the judge is blinded against, in the
+    comparison that carries the attribution claim (docs/JUDGE_RUBRIC.md).
+    """
+    competition = solution_run_key.rsplit("_", 2)[0] if "_" in solution_run_key else solution_run_key
+    return f"{competition} · solution {index + 1}"
+
+
+def _run_block(*, run_key: str, label: str, items: list[dict], nodes: list[dict]) -> str:
     solution = _highlight(source=items[0].get("solution_excerpt", ""))
     chain = "".join(_node_block(node=node) for node in nodes) or "<p>(no trajectory preserved)</p>"
     flags = "".join(_item_block(item=item) for item in items)
     return (
         f"<details class='run' id='run-{_escape(run_key)}' data-run='{_escape(run_key)}'>"
-        f"<summary>{_escape(run_key)} — {len(items)} flag(s)</summary>"
+        f"<summary>{_escape(label)} — {len(items)} flag(s)</summary>"
         f"<div class='split'>"
         f"<div class='artifacts'><h3>Submitted solution</h3><pre>{solution}</pre>"
-        f"<h3>Trajectory (ancestor chain)</h3>{chain}</div>"
+        f"<h3>Trajectory (submitted node)</h3>{chain}</div>"
         f"<div class='flags'><h3>Flags to classify</h3>{flags}</div>"
         f"</div></details>"
     )
@@ -351,7 +376,13 @@ def render_review_page(
     nodes_by_run = nodes_by_run or {}
     grouped: dict[str, list[dict]] = {}
     for item in sample:
-        grouped.setdefault(item.get("run_key", "unknown"), []).append(item)
+        grouped.setdefault(solution_key(item=item), []).append(item)
+    # Aliases assigned in sorted key order so the same judgments file always
+    # produces the same page, without the order itself ranking the conditions.
+    labels = {
+        key: blinded_label(solution_run_key=key, index=index)
+        for index, key in enumerate(sorted(grouped))
+    }
     # stratified_sample emits round-robin over (category, classification), so
     # sample order correlates with the judged class — position would leak the
     # label the page otherwise withholds. Shuffle within each run, seeded so the
@@ -359,7 +390,12 @@ def render_review_page(
     for items in grouped.values():
         random.Random(SHUFFLE_SEED).shuffle(items)
     runs = "".join(
-        _run_block(run_key=run_key, items=items, nodes=nodes_by_run.get(run_key, []))
+        _run_block(
+            run_key=run_key,
+            label=labels[run_key],
+            items=items,
+            nodes=nodes_by_run.get(run_key, []),
+        )
         for run_key, items in grouped.items()
     )
     # A cross-competition sample spans several runs, each carrying a solution and
@@ -368,7 +404,7 @@ def render_review_page(
     # which the global count cannot.
     nav = "".join(
         f"<button class='nav-run' data-target='{_escape(run_key)}'>"
-        f"{_escape(run_key)} <span data-count='{_escape(run_key)}'></span></button>"
+        f"{_escape(labels[run_key])} <span data-count='{_escape(run_key)}'></span></button>"
         for run_key in grouped
     )
     return f"""<!doctype html>
@@ -387,7 +423,7 @@ def render_review_page(
 <main>
   <p class="intro">Classify each flag against <code>docs/JUDGE_RUBRIC.md</code> using the same
   three classes and the same evidence requirement the judge was held to — an
-  <code>acted_on_*</code> classification needs a quoted code or log line, and without one the
+  <code>acted_on</code> classification needs a quoted code or log line, and without one the
   rubric voids it to <code>not_acted_on</code>. The judge's
   classification and the run's score are deliberately absent from this file — do not look them
   up before finishing, since anchoring defeats the purpose. Labels save as you go; download them
@@ -404,7 +440,7 @@ def parse_labels(*, text: str) -> dict[str, str]:
     """Read {item_id: label} from the page's exported JSON.
 
     Applies the rubric's evidence requirement exactly as `judge.judge_flags` does
-    to the LLM: an `acted_on_*` label with no quote is void and becomes
+    to the LLM: an `acted_on` label with no quote is void and becomes
     `not_acted_on`. Enforcing it here rather than only in the page means a
     hand-edited export cannot slip past the rule either, so both raters are held
     to the same standard whatever produced the file.

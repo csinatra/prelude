@@ -37,19 +37,64 @@ baseline (A); that comparison is invalid because the published AIDE runs
 used gpt-4o-2024-08-06, not our agent model — see the Condition A note
 under the experimental design.)*
 
-**H2 (mechanism, within-C2):** C2's specification flags
-are acted on by the agent at rates that vary systematically by flag category, and
-flags recorded as acted on are associated with better outcomes than flags
-recorded as not acted on.
+**H2 (mechanism):** C2's specification flags are acted on by the agent above the
+rate at which unconditioned solutions address the same mechanisms, and that
+effect varies systematically by flag category; flags recorded as acted on are
+associated with better outcomes than flags recorded as not acted on.
 
-*Scope limit (added 2026-08-11, pre-run).* This is a within-C2 claim, not a
-mediation claim about the C2-versus-B2 difference. Specification flags exist only
-in C2, so the frozen rubric produces no comparable measure of whether B2's
-freeform advice was acted on. H2 can establish that C2's structured flags reach
-the agent's behavior; it cannot establish that they do so more reliably than
-B2's prose advice does. This is a limitation of the **instrument**, not of sample
-size: it would persist at full scale unless a B-side measure is added, which is
-roadmapped rather than in v1 scope.
+*Base-rate counterfactual (added 2026-08-25, pre-run).* An action rate alone is
+uninterpretable, because some mechanisms are addressed by competent default
+practice whether or not anything flagged them. Each C2 run's flag set is
+therefore judged a second time against the paired **B2** solution for the same
+competition and seed, the flag unchanged and only the solution differing, giving
+
+    P(addressed | spec delivered)       from the C2 run
+    P(addressed | spec not delivered)   from the paired B2 run
+
+**Estimand.** The unit is a (competition, flag) pair; treatment is receiving
+C2's specification; the outcome is the rubric's binary action class. The paired
+difference is the average treatment effect on whether the mechanism was
+addressed, and the per-category breakdown is the corresponding CATE with flag
+category as the conditioning variable, so the heterogeneity clause above is a
+treatment-effect-heterogeneity claim rather than a descriptive one. This costs
+judge calls only, no additional agent runs, since it reuses runs already in the
+grid. The judge is condition-blind (docs/JUDGE_RUBRIC.md), so it cannot know
+which side of the comparison a solution came from.
+
+**Confirmatory control is B2; B1 and C1 are descriptive.** B2 is the
+pre-registered control because it is the headline contrast and it keeps the
+human anchor at two conditions. B1 and C1 are judged the same way and reported
+as a gradient — action rate against increasing spec structure — carrying no
+separation criterion, because a monotonic trend across four arms cannot be
+established at 3–5 competitions. Condition-blind judging is what licenses
+applying the instrument to arms the human anchor did not cover: the judge cannot
+behave differently by condition when it cannot see the condition.
+
+**Two properties of the estimand that bound what may be claimed.** The treatment
+is *compound*: C2 delivers its flags inside a longer, more structured document,
+so what is identified is the effect of receiving C2's spec, not of any isolated
+flag. Separating content from format is the negative-control arm's job (v1.5).
+And flag observations are *clustered within runs* — one spec delivers many
+flags, and the agent's response to one may not be independent of the others — so
+the effective sample size is competitions, not flags. The bootstrap resamples
+competitions accordingly, and a flag-level count must never be reported as
+though it were an independent n.
+
+*Scope limit (revised 2026-08-25, pre-run; supersedes the 2026-08-11 note that
+scoped H2 within-C2).* The base rate is not a measure of whether B2's *prose
+advice* was followed; that remains unmeasurable, since the rubric classifies
+flags and B2 has none. The earlier note conflated the two questions. What the
+counterfactual establishes is narrower and still useful: the rate at which the
+flagged mechanisms are addressed absent the specification.
+
+*What this deliberately does not attempt.* Per-flag causal attribution by
+tracing AIDE's node lineage. Lineage records how the agent responded to its own
+prior results, which is credit assignment over a reward signal and answers a
+different causal question than H2 asks; its depth also varies with search-tree
+shape rather than with agent behavior, so evidence volume would differ between
+otherwise identical flags. Causal purchase here comes from between-condition
+comparison under the design, not from reconstructing why any single instance
+occurred.
 
 **H3 (efficiency, added 2026-08-13, pre-run):** Front-loading specification
 effort directs the agent's search, so conditioned runs converge faster than
@@ -638,15 +683,26 @@ inputs — the registry alone keeps only outcome fields.
 
 ## Mechanistic evaluation
 
-Per-flag flag→action→outcome judging against the **frozen rubric**
+Per-flag flag→action judging against the **frozen rubric**
 (`docs/JUDGE_RUBRIC.md`; frozen before any run, amendment-controlled):
 each `SpecificationFlag` from a C2 run is classified `not_acted_on` /
-`acted_on_unclear` / `acted_on_positive` by an LLM judge
-(`analysis/judge.py`) that sees the solution artifacts but never the score.
-Aggregation per category: detection rate, action rate, outcome
-contribution, and retrieval-grounded fraction (non-empty
-`evidence_doc_ids`). Requires the artifact preservation layout in
+`acted_on` by an LLM judge (`analysis/judge.py`) that sees the solution
+artifacts but never the score and never the condition. Aggregation per
+category: detection rate, action rate, and retrieval-grounded fraction
+(non-empty `evidence_doc_ids`), each read against the base rate from the paired
+control run. Requires the artifact preservation layout in
 `analysis/artifacts.py`.
+
+*Why contribution is computed rather than judged (revised 2026-08-25, pre-run).*
+The rubric previously carried a third class asserting that a choice contributed
+to the outcome. It was retired because the judge cannot reach it: the rubric
+admits three evidence types for contribution, and one requires the run's score,
+which the same rubric forbids the judge from seeing. Whether action associates
+with better outcomes is therefore a post-hoc computation over the registry,
+where scores exist, rather than a class the judge assigns. This is also what H2
+asked for in the first place, comparing outcomes between flags recorded as acted
+on and not acted on. The cost is that no per-run claim is made that a specific
+choice helped; the association is across runs.
 
 *Note on how the injected spec persists, for interpreting these results later.*
 The spec is appended to the competition description as ADVISOR CONTEXT

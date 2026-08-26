@@ -1,6 +1,7 @@
 """The review page must be blinded, grouped, and round-trip its labels."""
 
 import json
+import re
 
 from analysis.judge_review_page import parse_labels, render_review_page
 
@@ -10,7 +11,7 @@ SAMPLE = [
         "run_key": "comp_C2_0",
         "category": "iid_violation",
         "explanation": "grouped rows leak across folds",
-        "classification": "acted_on_positive",
+        "classification": "acted_on",
         "evidence_quote": "GroupKFold(",
         "reasoning": "used grouped CV",
         "solution_excerpt": "print('solution')",
@@ -30,7 +31,7 @@ SAMPLE = [
         "run_key": "other_C2_1",
         "category": "iid_violation",
         "explanation": "temporal ordering",
-        "classification": "acted_on_unclear",
+        "classification": "acted_on",
         "evidence_quote": "sort_values",
         "reasoning": "sorted by date",
         "solution_excerpt": "print('other')",
@@ -53,17 +54,47 @@ def test_page_is_blinded():
         assert f"{item['item_id']}'>{item['classification']}" not in body
 
 
+def test_base_rate_items_group_under_their_solution_not_their_flags():
+    """A base-rate item's flags come from C2 but it was judged against B2's code.
+
+    Grouping by the flag's run would file it under C2 and show it C2's solution
+    and trajectory, so the reviewer would label a flag against artifacts it was
+    never judged on — a correctness bug, not only a blinding one.
+    """
+    item = {
+        "item_id": "comp_C2_0#f1@comp_B2_0",
+        "run_key": "comp_C2_0",
+        "solution_run_key": "comp_B2_0",
+        "is_base_rate": True,
+        "category": "iid_violation",
+        "explanation": "grouped rows",
+        "solution_excerpt": "import pandas  # control solution",
+        "logs_excerpt": "",
+    }
+    page = render_review_page(sample=[item], nodes_by_run={})
+    assert "control solution" in page
+    # The heading must not disclose which condition produced it.
+    assert "comp_B2_0 —" not in page and "comp_C2_0 —" not in page
+
+
+def test_visible_headings_never_name_the_condition():
+    page = render_review_page(sample=SAMPLE, nodes_by_run=NODES)
+    for heading in re.findall(r"<summary>(.*?)</summary>", page):
+        assert "_C2_" not in heading and "_B2_" not in heading
+
+
 def test_items_are_grouped_by_run():
     page = render_review_page(sample=SAMPLE, nodes_by_run=NODES)
     assert page.count("class='run'") == 2
-    assert "comp_C2_0 — 2 flag(s)" in page
-    assert "other_C2_1 — 1 flag(s)" in page
+    # Headings name the competition but not the condition or seed — see blinding.
+    assert "comp · solution 1 — 2 flag(s)" in page
+    assert "other · solution 2 — 1 flag(s)" in page
 
 
 def test_every_item_gets_all_three_label_options():
     page = render_review_page(sample=SAMPLE, nodes_by_run=NODES)
     for item in SAMPLE:
-        for name in ("not_acted_on", "acted_on_unclear", "acted_on_positive"):
+        for name in ("not_acted_on", "acted_on", "acted_on"):
             assert f"name='{item['item_id']}' value='{name}'" in page
 
 
@@ -83,34 +114,34 @@ def test_explanations_are_escaped():
 def test_parse_labels_round_trip_and_drops_invalid():
     text = json.dumps(
         {
-            "comp_C2_0#f1": {"label": "acted_on_positive", "quote": "GroupKFold("},
+            "comp_C2_0#f1": {"label": "acted_on", "quote": "GroupKFold("},
             "comp_C2_0#f2": {"label": "typo"},
             "other_C2_1#f1": {"label": ""},
         }
     )
-    assert parse_labels(text=text) == {"comp_C2_0#f1": "acted_on_positive"}
+    assert parse_labels(text=text) == {"comp_C2_0#f1": "acted_on"}
 
 
 def test_acted_on_without_a_quote_is_voided_like_the_llm_judge():
     """Same rule analysis.judge applies to the model, so both raters match."""
     text = json.dumps(
         {
-            "a": {"label": "acted_on_positive", "quote": "   "},
-            "b": {"label": "acted_on_unclear"},
+            "a": {"label": "acted_on", "quote": "   "},
+            "b": {"label": "acted_on"},
             "c": {"label": "not_acted_on"},
-            "d": {"label": "acted_on_unclear", "quote": "sort_values("},
+            "d": {"label": "acted_on", "quote": "sort_values("},
         }
     )
     assert parse_labels(text=text) == {
         "a": "not_acted_on",
         "b": "not_acted_on",
         "c": "not_acted_on",
-        "d": "acted_on_unclear",
+        "d": "acted_on",
     }
 
 
 def test_bare_string_export_is_treated_as_quoteless():
-    text = json.dumps({"a": "acted_on_positive", "b": "not_acted_on"})
+    text = json.dumps({"a": "acted_on", "b": "not_acted_on"})
     assert parse_labels(text=text) == {"a": "not_acted_on", "b": "not_acted_on"}
 
 
@@ -150,7 +181,7 @@ def test_rubric_panel_embeds_the_frozen_text_and_its_hash():
 
     rubric = Path("docs/JUDGE_RUBRIC.md").read_text()
     page = render_review_page(sample=SAMPLE, rubric_text=rubric)
-    assert "acted_on_positive" in page and "id='rubric'" in page
+    assert "acted_on" in page and "id='rubric'" in page
     assert hashlib.sha256(rubric.encode()).hexdigest()[:12] in page
 
 
@@ -177,7 +208,7 @@ def test_item_order_does_not_track_the_judged_class():
             "solution_excerpt": "x = 1",
         }
         for index, cls in enumerate(
-            ["acted_on_positive"] * 4 + ["acted_on_unclear"] * 4 + ["not_acted_on"] * 4
+            ["acted_on"] * 4 + ["acted_on"] * 4 + ["not_acted_on"] * 4
         )
     ]
     import re

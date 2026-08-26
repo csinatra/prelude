@@ -83,7 +83,7 @@ run is shuffled under a fixed seed, because the stratified sample is ordered by
 in a generated HTML page (`analysis.judge_review_page`), which presents a run's
 artifacts alongside its flags, offers the rubric on demand, and persists labels
 locally so a review can be done in sittings. The reviewer is held to the same
-evidence requirement as the judge: an `acted_on_*` classification requires a
+evidence requirement as the judge: an `acted_on` classification requires a
 quoted code or log line, and without one the rubric voids it to `not_acted_on`.
 That rule is enforced when the labels are read, not only in the page, so both
 raters are held to it whatever produced the file.
@@ -104,7 +104,7 @@ Report all of the following beside the mechanistic results, whatever they show:
 
 - percent agreement and Cohen's kappa, with the sample size
 - the confusion table, since which direction the judge errs in matters
-  (systematically over-crediting `acted_on_positive` would inflate H2, while
+  (systematically over-crediting `acted_on` would inflate H2, while
   over-calling `not_acted_on` would deflate it)
 - the judge provenance recorded by `analysis.judge.judge_provenance()`: judge
   model, rubric SHA-256, and judge-prompt SHA-256, so a reported agreement

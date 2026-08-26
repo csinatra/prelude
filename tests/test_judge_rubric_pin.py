@@ -15,7 +15,10 @@ import hashlib
 from pathlib import Path
 
 RUBRIC_PATH = Path("docs/JUDGE_RUBRIC.md")
-PINNED_SHA256 = "6f668c75067098b6e1124943ac6337a604a9bd4979981677a588caf26ecdc745"
+# Repinned 2026-08-25 for the three-class → two-class revision. Legitimate under
+# the freeze because no evaluation run had been judged: the only judgments in
+# existence were the dev smoke's, re-judged under the new text (DECISIONS.md).
+PINNED_SHA256 = "99968bffb89ec896b109abab8be5377c9fd564ca74b1d4563a25b3aeeebb7dbf"
 
 
 def test_rubric_is_unchanged():
