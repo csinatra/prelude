@@ -648,6 +648,32 @@ contribution, and retrieval-grounded fraction (non-empty
 `evidence_doc_ids`). Requires the artifact preservation layout in
 `analysis/artifacts.py`.
 
+*Note on how the injected spec persists, for interpreting these results later.*
+The spec is appended to the competition description as ADVISOR CONTEXT
+(`cloudbox/agents/aide-prelude/start.sh`) and reaches AIDE as `desc_file`,
+which becomes `task_desc`. AIDE rebuilds each prompt as Introduction, Task
+description, Memory, Instructions, so `task_desc` is re-sent verbatim on every
+call while Memory, the journal summary of prior nodes, is the part that is
+bounded and summarized. The spec therefore sits on the task side of that
+boundary and does not attenuate over a run.
+
+**RE-Bench** is the reason this is worth stating. It credits AIDE's tree search
+over whole solutions for handling long-horizon runs better than
+context-accumulating scaffolds, and separately finds that agents lose ground to
+human experts by holding onto stubborn incorrect assumptions. Those two
+observations invite an assumption that an injected specification would fade the
+way conversational context does. Here it does not.
+
+The consequence is symmetric, and should not be read as an advantage. A
+well-grounded spec keeps its framing in front of every node for the whole run.
+A poorly grounded one is equally persistent: its errors are re-presented at
+full strength at every step rather than being revised away by search, and the
+agent has no mechanism for discounting them. The injection is thus
+variance-increasing with respect to spec quality rather than strictly
+beneficial. This design does not isolate that effect, and nothing is resolved
+or altered here; it is recorded so that neither a strong nor a weak C2 result
+is attributed to the injection mechanism when it may belong to spec quality.
+
 ## Threats to validity
 
 - **Construct validity (acknowledged, central, structural).** MLE-bench
@@ -669,6 +695,16 @@ contribution, and retrieval-grounded fraction (non-empty
     The limit lives in the grading mechanism rather than in the input text. A
     synthetic-corruption arm was considered and rejected on this basis
     (DECISIONS.md, 2026-08-07).
+  - *Independent corroboration that this is a property of the benchmark class.*
+    **RE-Bench** reaches the same conclusion about itself, for a different
+    benchmark built by a different team for a different purpose. Its limitations
+    section notes that the criteria making an environment gradeable, namely
+    comprehensible instructions, feasible scoring, and all necessary resources
+    supplied, are also what make it "less representative of real research,"
+    where unclear goals and impossible problems are common. The limitation
+    named here is therefore structural to automatically-graded AI R&D
+    evaluation rather than specific to MLE-bench or to this project. RE-Bench
+    does not resolve it; it reports having the same one.
   - *Mitigation within the epistemic case.* Competition selection favors Lite
     competitions with known data quirks such as leakage paths, temporal
     structure, and measurement gaps.
@@ -817,6 +853,23 @@ decomposing.
 
 **Planned additions, not in v1 scope.**
 
+- *Outcome dispersion (exploratory, recorded 2026-08-25 pre-run).* Because
+  `task_desc` is re-sent verbatim at every step, a weak spec persists as
+  strongly as a strong one (see the spec-persistence note under Mechanistic
+  evaluation), predicting that C2's outcome dispersion is at least B2's even
+  where means coincide. Exploratory rather than secondary: no criterion, not
+  part of H1/H2/H3, and no commitment to run in v1 — but if computed it is
+  reported whichever way it comes out. Recording it now is what keeps it a
+  pre-specified prediction rather than a pattern noticed afterwards.
+  - *Answerable from v1 data, weakly.* Comparing C2 and B2 dispersion needs no
+    new runs, only scores already in the registry. Three seeds estimates a
+    variance poorly, so a null would be uninformative.
+  - *Not answerable in v1 at any n.* Attributing that dispersion to spec quality
+    is confounded by construction: each spec is used by exactly one agent run,
+    so spec-driven and agent-driven variance cannot be separated. Breaking the
+    pairing (M specs × N agent runs on one competition, ~18 runs) is the v1.5
+    arm that would answer it. If Condition A runs, its dispersion is pure agent
+    stochasticity and bounds how much of C2's spread could be spec-induced.
 - *Seed-count sensitivity note.* Fold AIRA-dojo's findings on seed variance and
   on the AIDE validation/test generalization gap into the limitations section.
   Three seeds sits below their recommended count; the paired analysis in the
