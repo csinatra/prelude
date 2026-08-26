@@ -212,7 +212,7 @@ built plus one grid-external anchor:
 
 | Condition | Retrieval | Synthesis | Isolates (vs) |
 |---|---|---|---|
-| A | none | none | no-assistance anchor — matched agent, contingent arm (see note) |
+| A | none | none | no-assistance anchor — matched agent (see note) |
 | B1 | flat, single query | none — raw context block | knowledge provision per se (vs A) |
 | B2 | flat, single query | freeform, stance-free | LLM preprocessing (vs B1) |
 | C1 | staged, 4 directed queries | freeform, stance-free (B2's path) | staged retrieval (vs B2) |
@@ -238,7 +238,7 @@ flowchart TD
     SR --> ST["surface → flag → advise<br/>(structured stages, RETRIEVAL_STANCE)"]
     ST --> C2["C2 spec:<br/>staged block + framing,<br/>signals, flags, recommendations"]
 
-    A["Condition A (contingent):<br/>no spec mounted = stock AIDE"]
+    A["Condition A:<br/>no spec mounted = stock AIDE"]
 ```
 
 ### Staged pipeline — queries, prompts, schemas
@@ -360,24 +360,30 @@ they address — the structure whose downstream effect this POC measures.
 
 Design notes:
 
-- **Condition A (decided 2026-07-16, pre-run):** the published MLE-bench
-  AIDE baseline used `gpt-4o-2024-08-06` as the code model and is not
-  model-matched to our runs — it is cited as context only and never
-  compared statistically. A *matched* A exists for free in the harness:
-  `aide-prelude` with no spec mounted is byte-identical to stock AIDE
-  (same agent model, hardware, time/step budgets, mle-bench version).
-  It is pre-registered as a **contingent arm**, not a primary condition:
-  the full A arm (~30 runs, est. +\$200–250) — unmounted `aide-prelude` on
-  the eval competitions at the same model/hardware/budget as B/C — triggers
-  only if C2 fails to separate from B, or any condition lands below the
-  plausible no-assistance range, the outcomes under which "is retrieval
-  beneficial at all, or detrimental?" becomes load-bearing for
-  interpretation. Infrastructure smoke runs (RUNBOOK step 4) are decoupled
-  from this: they use the 8-step `dev` variant on a held-out off-eval
-  competition and are throwaway integration checks, **not** matched-A data
-  points — the dev budget is too short to be a valid A run. The core
-  research question (structured reasoning + directed retrieval vs naive
-  provision) is carried by the B/C contrasts and does not require A.
+- **Condition A (pre-registered 2026-08-25, pre-run):** a primary arm, run at
+  every eval competition and seed. `aide-prelude` with no spec mounted is stock
+  AIDE and requires no new code, inheriting the same agent model, hardware,
+  budget, and mle-bench version as every other condition in the grid.
+
+  It supplies the bottom rung of the decomposition ladder. B1's isolated
+  variable is knowledge provision per se, which is defined against A; without A
+  that contrast has no partner. More consequentially, A is what makes the null
+  case readable: if C2, B2 and B1 all land together, only A distinguishes
+  "structure does not help" from "every condition is worse than no
+  specification at all". The headline claim does not rest on it — the powered
+  contrast is C2 vs B2, and H1 is stated relative to unstructured provision
+  rather than to nothing — but without A one plausible outcome of the grid is
+  uninterpretable rather than merely unpowered.
+
+  The published MLE-bench AIDE baseline is **not cited as a comparison** in
+  either direction. It carries two independent mismatches: a different code
+  model (`gpt-4o-2024-08-06`), and MLE-bench's reference budget where this grid
+  runs at a reduced one. Neither a statistical nor a directional reading of it
+  is admissible here; A is the only no-assistance anchor this design uses.
+
+  Infrastructure smoke runs (RUNBOOK step 4) are not A data points: they use
+  the 8-step `dev` variant on a held-out off-eval competition and are throwaway
+  integration checks, at a budget far too short to be a valid A run.
 - **Retrieval unit held constant.** All conditions receive practitioner
   knowledge as **notebook summaries** (one LLM abstract per notebook) plus
   flat competition-metadata chunks. B retrieves summaries with one flat query;
