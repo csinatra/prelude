@@ -546,8 +546,14 @@ Each measure is defined once, under the hypothesis it serves.
   medal difference that is really threshold luck. The percentile — the fraction
   of leaderboard teams the submission beats, direction-aware so higher is always
   better — is not in mle-bench's grading report and is computed by the batch
-  driver at grade time, because the leaderboards are git-lfs files inside the
-  mle-bench checkout and exist only on the cloud box.
+  driver at grade time. The reference distribution is the static snapshot of the
+  historical Kaggle leaderboard that mle-bench ships per competition; nothing is
+  submitted to Kaggle and grading is entirely local, so a percentile states where
+  a run's score *would* have placed among those teams. Because that snapshot is a
+  git-lfs file inside the mle-bench checkout, which exists only on the cloud box,
+  each leaderboard is copied onto the results root on first use — otherwise the
+  measure is computable exactly once and cannot be re-derived or audited after
+  the instance is destroyed.
 
 **H2 (mechanism).** Whether C2's flags reached the agent's behavior. Measured by
 per-flag judging against the frozen rubric, aggregated per category; see

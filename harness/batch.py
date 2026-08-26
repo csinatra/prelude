@@ -48,6 +48,7 @@ import csv
 import json
 import logging
 import os
+import shutil
 import subprocess
 import time
 from dataclasses import dataclass
@@ -430,25 +431,61 @@ def _grade(*, run: dict, submission_path: str, data_dir: Path, report_dir: Path)
     return report
 
 
+def leaderboard_path(*, competition_id: str) -> Path | None:
+    """The competition's leaderboard, preserved onto the results root on first use.
+
+    The leaderboards are git-lfs files inside the mle-bench checkout, which lives
+    only on the cloud box and dies with the instance. That made
+    `leaderboard_percentile` computable exactly once, at grade time, and
+    unrecoverable afterwards: a run graded without it could never have it
+    backfilled, and nothing about the analysis could be re-derived or audited on
+    the dev machine. Two smoke runs lost the field that way.
+
+    So the first computation copies the file under the results root, which is on
+    the persistent volume and syncs back with every other artifact. No operator
+    step, and nothing to remember before terminating an instance. The copy is
+    git-tracked on the dev machine (see .gitignore), joining the corpus manifest
+    and retrieval characterization as versioned reference data.
+
+    Nothing is ever written back to a leaderboard: it is a static snapshot of the
+    historical Kaggle standings, our runs are graded locally and never submitted,
+    and `rank_score` only reads it. That is what makes a placement reconstructible
+    later from a preserved score alone.
+
+    The preserved copy wins over the checkout when both exist. mle-bench is
+    pinned, so they agree; preferring the copy means the analysis reads the same
+    bytes the percentile was computed from even if the checkout is later moved
+    to a different commit.
+    """
+    preserved = registry.results_root() / "leaderboards" / f"{competition_id}.csv"
+    if preserved.is_file():
+        return preserved
+    source = MLEBENCH_DIR / "mlebench" / "competitions" / competition_id / "leaderboard.csv"
+    if not source.is_file():
+        return None
+    preserved.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, preserved)
+    logger.info("preserved leaderboard: %s", preserved)
+    return preserved
+
+
 def _leaderboard_percentile(*, competition_id: str, report: dict) -> float | None:
     """Where the final submission lands in the competition's real leaderboard.
 
     H1's "higher resolution" measure (RESEARCH_DESIGN.md): it carries more
     information per run than a binary medal and guards against a medal
     difference that is really threshold luck. mle-bench's CompetitionReport
-    gives medal booleans and thresholds but no percentile, and the leaderboards
-    are git-lfs files inside the mle-bench checkout — they exist only on the box,
-    so this is computed at grade time and recorded, not derived later on the dev
-    machine.
+    gives medal booleans and thresholds but no percentile, so it is computed
+    here.
 
     Reported as the fraction of leaderboard teams the submission beats, so higher
     is better under both metric directions.
     """
     if report.get("score") is None or not report.get("valid_submission"):
         return None
-    path = MLEBENCH_DIR / "mlebench" / "competitions" / competition_id / "leaderboard.csv"
-    if not path.is_file():
-        logger.warning("no leaderboard for %s at %s", competition_id, path)
+    path = leaderboard_path(competition_id=competition_id)
+    if path is None:
+        logger.warning("no leaderboard available for %s", competition_id)
         return None
     try:
         with path.open() as handle:

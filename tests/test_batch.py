@@ -513,3 +513,51 @@ def test_leaderboard_percentile_none_without_a_valid_submission(tmp_path, monkey
     monkeypatch.setattr(batch, "MLEBENCH_DIR", tmp_path)
     report = {"score": 0.5, "valid_submission": False, "is_lower_better": False}
     assert batch._leaderboard_percentile(competition_id="comp", report=report) is None
+
+
+def test_leaderboard_is_preserved_onto_the_results_root(tmp_path, monkeypatch):
+    """The leaderboard must outlive the instance that held it.
+
+    It is a git-lfs file inside the mle-bench checkout, which exists only on the
+    cloud box. Without this copy the percentile is computable exactly once, at
+    grade time, and can never be backfilled or audited afterwards — two smoke
+    runs lost the field that way when their box was terminated.
+    """
+    board = tmp_path / "mlebench" / "competitions" / "comp"
+    board.mkdir(parents=True)
+    (board / "leaderboard.csv").write_text("teamId,score\n1,0.1\n2,0.3\n")
+    monkeypatch.setattr(batch, "MLEBENCH_DIR", tmp_path)
+    monkeypatch.setenv(registry.RESULTS_ENV, str(tmp_path / "volume"))
+
+    report = {"score": 0.2, "valid_submission": True, "is_lower_better": False}
+    assert batch._leaderboard_percentile(competition_id="comp", report=report) == 0.5
+
+    preserved = tmp_path / "volume" / "leaderboards" / "comp.csv"
+    assert preserved.is_file()  # copied without an operator step
+
+
+def test_percentile_works_from_the_preserved_copy_alone(tmp_path, monkeypatch):
+    """The dev machine has no mle-bench checkout, so this is the analysis path."""
+    preserved = tmp_path / "volume" / "leaderboards" / "comp.csv"
+    preserved.parent.mkdir(parents=True)
+    preserved.write_text("teamId,score\n1,0.1\n2,0.3\n")
+    monkeypatch.setattr(batch, "MLEBENCH_DIR", tmp_path / "absent")
+    monkeypatch.setenv(registry.RESULTS_ENV, str(tmp_path / "volume"))
+
+    report = {"score": 0.2, "valid_submission": True, "is_lower_better": False}
+    assert batch._leaderboard_percentile(competition_id="comp", report=report) == 0.5
+
+
+def test_preserved_leaderboard_is_not_overwritten_by_the_checkout(tmp_path, monkeypatch):
+    """The percentile must be re-derivable from the bytes it was computed from."""
+    board = tmp_path / "mlebench" / "competitions" / "comp"
+    board.mkdir(parents=True)
+    (board / "leaderboard.csv").write_text("teamId,score\n1,9.9\n")
+    preserved = tmp_path / "volume" / "leaderboards" / "comp.csv"
+    preserved.parent.mkdir(parents=True)
+    preserved.write_text("teamId,score\n1,0.1\n2,0.3\n")
+    monkeypatch.setattr(batch, "MLEBENCH_DIR", tmp_path)
+    monkeypatch.setenv(registry.RESULTS_ENV, str(tmp_path / "volume"))
+
+    assert batch.leaderboard_path(competition_id="comp") == preserved
+    assert "9.9" not in preserved.read_text()
