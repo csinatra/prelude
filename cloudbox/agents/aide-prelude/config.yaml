@@ -29,28 +29,32 @@
 # is pinned from what this run's convergence curve shows (RESEARCH_DESIGN.md H3)
 # and is not yet decided. Steps stay at the reference so they do not bind:
 # calibration wants the natural curve, with time as the wall.
+# One value drives both the hard stop and what the agent is told, as upstream
+# has it. `timeout $TIME_LIMIT_SECS` in start.sh is the only enforcement:
+# aideml's search loop is `while global_step < cfg.agent.steps` with no time
+# check, and upstream's config calls time_limit "purely informational". It still
+# reaches the model as <TOTAL_TIME_REMAINING> and caps the per-step budget it is
+# told to fit, so it is a pacing signal — kept equal to the real wall so the
+# agent paces against its actual budget rather than a second, stricter one it
+# would compound with its own margin. A kill mid-step costs one step: `save_run`
+# writes the journal after every completed step.
 vars:
   step_count: &step_count 500
-  container_time_limit: &container_time_limit 43200 # 12 hrs — hard kill
-  # AIDE's own deadline, deliberately UNDER the container's. start.sh runs aide
-  # under `timeout $TIME_LIMIT_SECS`, so when the two are equal the SIGTERM can
-  # land while AIDE is still finishing a step, and anything it writes only on a
-  # clean exit is lost. The margin lets AIDE stop on its own terms first.
-  agent_time_limit: &agent_time_limit 39600 # 11 hrs
+  time_limit: &time_limit 43200 # 12 hrs
 
 defaults: &defaults
   start: aide-prelude/start.sh
   dockerfile: aide-prelude/Dockerfile
   kwargs_type: omegaconf
   env_vars: &env_vars
-    TIME_LIMIT_SECS: *container_time_limit
+    TIME_LIMIT_SECS: *time_limit
     STEP_LIMIT: *step_count
     ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
 kwargs_common: &kwargs_common
   agent.search.max_debug_depth: 20
   agent.search.debug_prob: 1
-  agent.time_limit: *agent_time_limit
+  agent.time_limit: *time_limit
   exec.timeout: 32400 # 9 hours per step, matching kaggle.com
   copy_data: False
 

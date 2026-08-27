@@ -238,5 +238,18 @@ accounting section of RESEARCH_DESIGN.md.
   `agent_llm_*` for the agent side, `agent_wallclock_secs` for GPU time.
   Reconcile against COST_ESTIMATE.md as runs accumulate — flag early if per-run
   actuals exceed estimates.
+- **Checking on an unattended drain.** `harness.status` reads the registry, so
+  live state means running it on the box. One-shot from the dev machine, no
+  session to keep alive:
+
+  ```bash
+  ssh <box> 'cd ~/work/prelude && .venv/bin/python -m harness.status --logs'
+  ```
+
+  `--logs` names the running container and prints the `docker logs -f` command
+  to stream it; `--follow` polls until the queue drains, for a second terminal
+  left open. Run on the dev machine it works but reports whatever was last
+  synced, and finds no container. A stall is flagged only while work is
+  outstanding, so a finished queue's silence is not reported as a problem.
 - Serial runtime is a scoping constraint alongside cost: one instance drains the
   queue one run at a time, so the per-run cap sets how long the whole grid takes.
