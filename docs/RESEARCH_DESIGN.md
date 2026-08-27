@@ -377,9 +377,17 @@ Design notes:
 
   The published MLE-bench AIDE baseline is **not cited as a comparison** in
   either direction. It carries two independent mismatches: a different code
-  model (`gpt-4o-2024-08-06`), and MLE-bench's reference budget where this grid
-  runs at a reduced one. Neither a statistical nor a directional reading of it
-  is admissible here; A is the only no-assistance anchor this design uses.
+  model (`gpt-4o-2024-08-06`), and MLE-bench's reference budget of 500 steps /
+  24h where this grid runs below it. Neither a statistical nor a directional
+  reading of it is admissible here; A is the only no-assistance anchor this
+  design uses.
+
+  *Budget, pending.* The decision to run below the reference budget is made;
+  the value is not. Serial runtime across ~39–63 runs is a scoping constraint
+  in its own right, so the per-run cap is pinned from the calibration run's
+  convergence curve rather than chosen up front — see H3. Until then
+  `cloudbox/agents/aide-prelude/config.yaml` carries the calibration setting,
+  not the eval one.
 
   Infrastructure smoke runs (RUNBOOK step 4) are not A data points: they use
   the 8-step `dev` variant on a held-out off-eval competition and are throwaway
