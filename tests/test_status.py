@@ -1,5 +1,7 @@
 """Queue status derived from the registry. Docker is never consulted here."""
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from harness import registry, status
@@ -15,8 +17,10 @@ def _run(*, key, status_name, updated_at, **fields):
     return {"run_key": key, "status": status_name, "updated_at": updated_at, **fields}
 
 
-NOW = "2026-08-27T12:00:00+00:00"
-OLD = "2026-08-25T12:00:00+00:00"
+# Relative to the clock, not pinned: staleness is measured against "now", so
+# fixed timestamps silently age past the threshold and fail on a later date.
+NOW = datetime.now(tz=timezone.utc).isoformat()
+OLD = (datetime.now(tz=timezone.utc) - timedelta(seconds=status.STALE_AFTER_SECS * 2)).isoformat()
 
 
 def test_counts_split_abandoned_out_of_its_phase_status(seeded):
