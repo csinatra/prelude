@@ -5,6 +5,11 @@ artifact, and registers the run as status=spec_built in runs.jsonl. Agent
 execution inside the MLE-bench container and grading happen on the cloud box
 and advance the same run_key through later statuses.
 
+**Condition A** mounts no spec, so there is nothing to build and no LLM call to
+make: it is registered directly at status=registered, which the batch driver
+treats as needing the agent exactly like spec_built. It is routed through here
+so preparing the grid has one entry point for every condition.
+
 Runs entirely OUTSIDE the MLE-bench execution environment (CLAUDE.md core
 constraint 1): all LLM calls happen here, at spec-build time.
 
@@ -20,6 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from analysis.artifacts import _git_provenance, run_key, save_artifacts
+from harness.advance import register_run
 from harness.registry import append_run
 from harness.renderer import render_spec, spec_sections
 from pipeline.condition_b import run_b1, run_b2
@@ -45,6 +51,10 @@ CONDITION_RUNNERS = {
     "C1": run_c1,
     "C2": _run_c2_output,
 }
+
+# Every arm in the grid. A is absent from CONDITION_RUNNERS because it builds no
+# spec, but it is still a condition this entry point prepares.
+CONDITIONS = ("A", *CONDITION_RUNNERS)
 
 
 def _extract_retrievals(*, condition: str, output: dict) -> dict | list:
@@ -98,8 +108,16 @@ def _count_tokens(*, text: str) -> int | None:
         return None
 
 
-def run_condition(*, competition_id: str, condition: str, seed: int) -> Path:
-    """Build one spec, save artifacts, register the run. Returns the run directory."""
+def run_condition(*, competition_id: str, condition: str, seed: int) -> Path | None:
+    """Build one spec, save artifacts, register the run. Returns the run directory.
+
+    Condition A has no spec to build, so it is registered and returns None; its
+    run directory is created later, when the batch driver preserves the agent's
+    outputs into it.
+    """
+    if condition == "A":
+        register_run(competition_id=competition_id, condition=condition, seed=seed)
+        return None
     raw_problem = load_description(competition_id=competition_id)
     reset_usage()
     reset_shortfalls()
@@ -158,10 +176,10 @@ def run_condition(*, competition_id: str, condition: str, seed: int) -> Path:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--competition", required=True)
-    parser.add_argument("--condition", required=True, choices=sorted(CONDITION_RUNNERS))
+    parser.add_argument("--condition", required=True, choices=sorted(CONDITIONS))
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
     run_dir = run_condition(
         competition_id=args.competition, condition=args.condition, seed=args.seed
     )
-    print(f"spec built: {run_dir}")
+    print(f"spec built: {run_dir}" if run_dir else f"registered: {args.condition} (no spec)")

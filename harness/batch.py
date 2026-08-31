@@ -44,9 +44,11 @@ gating) is covered by tests with those seams mocked.
 """
 
 import argparse
+import csv
 import json
 import logging
 import os
+import shutil
 import subprocess
 import time
 from dataclasses import dataclass
@@ -65,6 +67,12 @@ DONE_STATUS = "graded"
 NEEDS_AGENT_STATUSES = {"spec_built", "registered"}
 
 MLEBENCH_DIR = Path(os.environ.get("MLEBENCH_DIR", str(Path.home() / "work" / "mle-bench")))
+# mle-bench lives in its own 3.11 venv (setup_cloudbox.sh); prelude has a
+# separate one. Bare `python` picks up whichever is on PATH — which is prelude's
+# under `.venv/bin/python -m harness.batch`, and lacks mle-bench's dependencies.
+MLEBENCH_PYTHON = MLEBENCH_DIR / ".venv" / "bin" / "python"
+MLEBENCH_CLI = MLEBENCH_DIR / ".venv" / "bin" / "mlebench"
+CONTAINER_CONFIG = Path(__file__).resolve().parent.parent / "cloudbox" / "container_config.json"
 
 
 @dataclass
@@ -74,6 +82,7 @@ class AgentOutputs:
     metrics: dict
     solution_path: str | None = None
     token_usage_path: str | None = None
+    viz_paths: tuple[str, ...] = ()
 
 
 def pending_runs() -> list[dict]:
@@ -105,8 +114,11 @@ def _run_agent(*, run: dict, data_dir: Path) -> AgentOutputs:
     queue. The step/time budget is the agent config's, not set here.
 
     mle-bench takes a `--competition-set` FILE (one competition id per line),
-    not a `--competition` flag; we give it a per-run split file and a dedicated
-    `--run-dir`. B/C spec injection: run_agent has no `--extra-mount`, so our
+    not a `--competition` flag; we give it a per-run split file. It does NOT
+    accept an output location — `--run-dir` is parsed and never referenced, and
+    outputs land in `runs/<timestamp>_run-group_<agent>/` under mle-bench's own
+    tree — so the group directory is located after the fact.
+    B/C spec injection: run_agent has no `--extra-mount`, so our
     setup_cloudbox.sh patches mle-bench's agents/run.py with a hook that mounts
     the file named by the PRELUDE_SPEC_PATH env var read-only at /home/spec/spec.md
     (which aide-prelude/start.sh appends as ADVISOR CONTEXT). Condition A leaves
@@ -114,37 +126,47 @@ def _run_agent(*, run: dict, data_dir: Path) -> AgentOutputs:
     the 2026-07-24 smoke run (ADVISOR CONTEXT appended, valid submission — see
     docs/DECISIONS.md).
     """
-    run_output_dir = MLEBENCH_DIR / "runs" / f"batch_{run['run_key']}"
     comp_set = MLEBENCH_DIR / "experiments" / "splits" / f"{run['run_key']}.txt"
     comp_set.parent.mkdir(parents=True, exist_ok=True)
     comp_set.write_text(run["competition_id"] + "\n")
 
     argv = [
-        "python", "run_agent.py",
+        str(MLEBENCH_PYTHON), "run_agent.py",
         "--agent-id", run.get("agent_id", "aide-prelude"),
         "--competition-set", str(comp_set),
         "--data-dir", str(data_dir),
-        "--run-dir", str(run_output_dir),
+        # mle-bench's default container config gives the agent 4 vCPUs and no
+        # GPU, which is a Docker default rather than the benchmark's stated
+        # baseline (36 vCPUs + one A10). See cloudbox/README.md.
+        "--container-config", str(CONTAINER_CONFIG),
     ]
     env = os.environ.copy()
-    spec_path = run.get("spec_path")  # relative to the prelude repo = the batch driver's cwd
-    if spec_path:
-        spec_abs = Path(spec_path).resolve()
-        if not spec_abs.is_file():
-            raise RuntimeError(f"{run['run_key']}: spec not found at {spec_abs}")
-        env["PRELUDE_SPEC_PATH"] = str(spec_abs)
+    if run.get("spec_path"):  # presence = this condition has a spec; A does not
+        env["PRELUDE_SPEC_PATH"] = str(_resolve_spec(run=run))
     logger.info("agent argv: %s (spec=%s)", " ".join(argv), env.get("PRELUDE_SPEC_PATH", "-"))
+    started_at = time.time()
     subprocess.run(argv, cwd=MLEBENCH_DIR, check=True, env=env)
+    run_output_dir = _locate_run_group(started_at=started_at)
+    if run_output_dir is None:
+        raise RuntimeError(f"{run['run_key']}: no run group created under {MLEBENCH_DIR / 'runs'}")
+    logger.info("run group: %s", run_output_dir.name)
     submission_path, journal_path, solution_path, token_usage_path = _locate_outputs(
         run_output_dir=run_output_dir
     )
-    metrics = _read_journal_metrics(journal_path=journal_path) if journal_path else {}
+    metrics = (
+        _read_journal_metrics(journal_path=journal_path, token_usage_path=token_usage_path)
+        if journal_path
+        else {}
+    )
+    metrics.update(_read_token_usage(token_usage_path=token_usage_path))
     return AgentOutputs(
         submission_path=submission_path,
         journal_path=journal_path,
         metrics=metrics,
         solution_path=solution_path,
         token_usage_path=token_usage_path,
+        viz_paths=_locate_viz(run_output_dir=run_output_dir)
+        + _locate_run_log(run_output_dir=run_output_dir),
     )
 
 
@@ -169,29 +191,217 @@ def _locate_outputs(
     return (submission, journal, solution, token_usage)
 
 
-def _read_journal_metrics(*, journal_path: str) -> dict:
-    """steps / wallclock / time-to-first-valid from the AIDE journal.
+def _locate_run_log(*, run_output_dir: Path) -> tuple[str, ...]:
+    """The container's own log — evidence, not just debugging.
+
+    It records that the spec was mounted (the ADVISOR CONTEXT banner and the
+    `cat /home/spec/spec.md` that follows) and what hardware the agent saw from
+    its startup probe. Both are claims the writeup makes about how runs were
+    configured, so the log is preserved with the outputs rather than left on the
+    ephemeral disk."""
+    hit = next(run_output_dir.glob("**/run.log"), None)
+    return (str(hit),) if hit else ()
+
+
+def _resolve_spec(*, run: dict) -> Path:
+    """Where this run's spec lives on THIS machine.
+
+    The registry's `spec_path` is written by the dev machine relative to its own
+    results root, so it does not resolve on a box whose root is the persistent
+    volume. The canonical location is derivable — artifacts always live at
+    run_root()/{run_key}/ — so the registry field is treated as a flag for
+    whether the condition has a spec at all, and the literal path only as a
+    fallback for rows written before the roots could differ.
+    """
+    run_key = run["run_key"]
+    canonical = artifacts.run_root() / run_key / "spec.md"
+    if canonical.is_file():
+        return canonical.resolve()
+    literal = Path(run["spec_path"])
+    if literal.is_file():
+        return literal.resolve()
+    raise RuntimeError(f"{run_key}: spec not found at {canonical} or {literal}")
+
+
+def _locate_run_group(*, started_at: float) -> Path | None:
+    """The run-group directory mle-bench just created.
+
+    It names its own output dir `runs/<timestamp>_run-group_<agent>/` and gives
+    no way to choose one, so the only handle is what appeared during this call.
+    Safe because the driver is deliberately serial — one agent run at a time —
+    and the mtime floor keeps the ~150 pre-existing group dirs out.
+    """
+    groups = [
+        path
+        for path in (MLEBENCH_DIR / "runs").glob("*_run-group_*")
+        if path.is_dir() and path.stat().st_mtime >= started_at - 5
+    ]
+    return max(groups, key=lambda path: path.stat().st_mtime, default=None)
+
+
+def _locate_viz(*, run_output_dir: Path) -> tuple[str, ...]:
+    """AIDE's own search-tree visualization, if it wrote one.
+
+    The journal is the machine-readable record; this is the navigable one, and
+    it is what makes a 500-step trajectory reviewable by a human at all
+    (docs/JUDGE_VALIDATION.md). Globbed rather than named because the filename
+    is aideml's, not ours, and unverified against a real run — anything the agent
+    left in logs/ as HTML is worth keeping. Absent is fine: nothing downstream
+    requires it."""
+    return tuple(str(path) for path in sorted(run_output_dir.glob("**/logs/*.html")))
+
+
+def _node_end(*, node: dict) -> float | None:
+    """When a node finished executing.
+
+    AIDE stamps `ctime` when the *drafting call returns*, not when the node
+    finishes — verified against a real journal, where node N+1's ctime equals
+    node N's ctime plus node N's exec_time plus the next draft. So a node's end
+    is ctime + exec_time, and no journal field marks the run's true beginning.
+    """
+    if "ctime" not in node:
+        return None
+    return node["ctime"] + (node.get("exec_time") or 0)
+
+
+def _node_metric(*, node: dict) -> tuple[float | None, bool]:
+    """(value, maximize) from a node, tolerating both serialization shapes.
+
+    A buggy node carries `{"value": None}` — a dict, not None — so testing the
+    field itself would count failed nodes as scored.
+    """
+    metric = node.get("metric")
+    if isinstance(metric, dict):
+        return metric.get("value"), bool(metric.get("maximize", True))
+    return metric, True
+
+
+def _read_journal_metrics(*, journal_path: str, token_usage_path: str | None = None) -> dict:
+    """Convergence measures for H3, from the AIDE journal.
 
     Journal is {"nodes": [{"step", "ctime", "exec_time", "metric", "is_buggy",
     ...}]}. Defensive — any schema surprise returns {}, never raises, so a graded
-    run keeps its score even if timing can't be parsed."""
+    run keeps its score even if timing can't be parsed.
+
+    Two milestones per run, recorded in both steps and seconds:
+
+    - **first valid** — the first node that ran without error. `steps_to_first_valid`
+      leads the timing pair in H3's supporting analysis (RESEARCH_DESIGN.md),
+      since wall-clock varies with data size, with whichever model the agent
+      tries, and with GPU contention.
+    - **best** — the node holding the run's best *validation* score. Note this is
+      best-so-far under a fixed step budget, so it is censored and biased toward
+      runs that happened to peak early; it summarizes the pre-registered per-step
+      score curve and is descriptive only, carrying no separation criterion.
+
+    Timing is measured from the first LLM call (`token_usage_path`), not from
+    `min(ctime)`. Measuring creation-to-creation returns exactly 0.0 whenever
+    node 0 is already valid — which is what a good spec is most likely to
+    produce, and precisely the case H3 needs to resolve. The floor would silence
+    the effect rather than measure it. Without the token log the origin falls
+    back to the first node's ctime, and both measures are then understated by
+    the first draft; the `timing_origin` field records which was used.
+    """
     try:
         nodes = json.loads(Path(journal_path).read_text()).get("nodes", [])
-        ctimes = [n["ctime"] for n in nodes if "ctime" in n]
-        if not ctimes:
+        ends = [end for node in nodes for end in [_node_end(node=node)] if end is not None]
+        if not ends:
             return {"steps": len(nodes)}
-        start = min(ctimes)
-        first_valid = next((n["ctime"] for n in nodes if not n.get("is_buggy")), None)
+        start, origin = _agent_start(token_usage_path=token_usage_path), "first_llm_call"
+        if start is None:
+            start, origin = min(node["ctime"] for node in nodes if "ctime" in node), "first_node"
+
+        def milestone(*, index: int | None, prefix: str) -> dict:
+            if index is None:
+                return {f"steps_to_{prefix}": None, f"time_to_{prefix}_secs": None}
+            end = _node_end(node=nodes[index])
+            return {
+                # 1-based: "the agent's first attempt worked" is 1 step, not 0.
+                f"steps_to_{prefix}": index + 1,
+                f"time_to_{prefix}_secs": round(end - start, 3) if end is not None else None,
+            }
+
+        scored = [
+            (value, maximize, index)
+            for index, node in enumerate(nodes)
+            if not node.get("is_buggy")
+            for value, maximize in [_node_metric(node=node)]
+            if value is not None
+        ]
+        best = None
+        if scored:
+            pick = max if scored[0][1] else min
+            best = pick(scored, key=lambda item: item[0])[2]
         return {
             "steps": len(nodes),
-            "wallclock_secs": round(max(ctimes) - start, 3),
-            "time_to_first_valid_secs": round(first_valid - start, 3)
-            if first_valid is not None
+            "wallclock_secs": round(max(ends) - start, 3),
+            "timing_origin": origin,
+            **milestone(
+                index=next(
+                    (i for i, node in enumerate(nodes) if not node.get("is_buggy")), None
+                ),
+                prefix="first_valid",
+            ),
+            **milestone(index=best, prefix="best"),
+            "best_validation_score": _node_metric(node=nodes[best])[0]
+            if best is not None
             else None,
         }
     except Exception:
         logger.exception("journal parse failed: %s", journal_path)
         return {}
+
+
+def _agent_start(*, token_usage_path: str | None) -> float | None:
+    """When the agent began work — the first LLM call's start.
+
+    The token side-channel (`prelude_token_usage.jsonl`, appended by the
+    aide-prelude backend) is the only record of the run's true origin: the
+    journal's earliest ctime is stamped when the first draft *returns*. Verified
+    against a real run, where the first node's ctime equals the first call's
+    t_end exactly."""
+    if not token_usage_path or not Path(token_usage_path).is_file():
+        return None
+    try:
+        starts = [
+            json.loads(line)["t_start"]
+            for line in Path(token_usage_path).read_text().splitlines()
+            if line.strip()
+        ]
+        return min(starts) if starts else None
+    except Exception:
+        logger.exception("token usage parse failed: %s", token_usage_path)
+        return None
+
+
+def _read_token_usage(*, token_usage_path: str | None) -> dict:
+    """Agent-side token totals — the other half of H3's two-sided cost ledger.
+
+    The spec side already lands in the registry (calls, in/out tokens); without
+    this the agent side lived only in a preserved artifact, so the cost
+    comparison the design calls for could not be made from the registry alone.
+    Per-call detail stays in the artifact for per-step attribution."""
+    if not token_usage_path or not Path(token_usage_path).is_file():
+        return {}
+    try:
+        calls = [
+            json.loads(line)
+            for line in Path(token_usage_path).read_text().splitlines()
+            if line.strip()
+        ]
+    except Exception:
+        logger.exception("token usage parse failed: %s", token_usage_path)
+        return {}
+    def total(*, field: str) -> int:
+        return sum(call.get(field) or 0 for call in calls)
+
+    return {
+        "llm_calls": len(calls),
+        "llm_input_tokens": total(field="input_tokens"),
+        "llm_output_tokens": total(field="output_tokens"),
+        "llm_cache_read_tokens": total(field="cache_read_input_tokens"),
+        "llm_cache_creation_tokens": total(field="cache_creation_input_tokens"),
+    }
 
 
 def _grade(*, run: dict, submission_path: str, data_dir: Path, report_dir: Path) -> Path:
@@ -208,7 +418,7 @@ def _grade(*, run: dict, submission_path: str, data_dir: Path, report_dir: Path)
         + "\n"
     )
     argv = [
-        ".venv/bin/mlebench", "grade",
+        str(MLEBENCH_CLI), "grade",
         "--submission", str(jsonl),
         "--output-dir", str(report_dir),
         "--data-dir", str(data_dir),
@@ -219,6 +429,82 @@ def _grade(*, run: dict, submission_path: str, data_dir: Path, report_dir: Path)
     if report is None:
         raise RuntimeError(f"no grading report written to {report_dir}")
     return report
+
+
+def leaderboard_path(*, competition_id: str) -> Path | None:
+    """The competition's leaderboard, preserved onto the results root on first use.
+
+    The leaderboards are git-lfs files inside the mle-bench checkout, which lives
+    only on the cloud box and dies with the instance. That made
+    `leaderboard_percentile` computable exactly once, at grade time, and
+    unrecoverable afterwards: a run graded without it could never have it
+    backfilled, and nothing about the analysis could be re-derived or audited on
+    the dev machine. Two smoke runs lost the field that way.
+
+    So the first computation copies the file under the results root, which is on
+    the persistent volume and syncs back with every other artifact. No operator
+    step, and nothing to remember before terminating an instance. The copy is
+    git-tracked on the dev machine (see .gitignore), joining the corpus manifest
+    and retrieval characterization as versioned reference data.
+
+    Nothing is ever written back to a leaderboard: it is a static snapshot of the
+    historical Kaggle standings, our runs are graded locally and never submitted,
+    and `rank_score` only reads it. That is what makes a placement reconstructible
+    later from a preserved score alone.
+
+    The preserved copy wins over the checkout when both exist. mle-bench is
+    pinned, so they agree; preferring the copy means the analysis reads the same
+    bytes the percentile was computed from even if the checkout is later moved
+    to a different commit.
+    """
+    preserved = registry.results_root() / "leaderboards" / f"{competition_id}.csv"
+    if preserved.is_file():
+        return preserved
+    source = MLEBENCH_DIR / "mlebench" / "competitions" / competition_id / "leaderboard.csv"
+    if not source.is_file():
+        return None
+    preserved.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, preserved)
+    logger.info("preserved leaderboard: %s", preserved)
+    return preserved
+
+
+def _leaderboard_percentile(*, competition_id: str, report: dict) -> float | None:
+    """Where the final submission lands in the competition's real leaderboard.
+
+    H1's "higher resolution" measure (RESEARCH_DESIGN.md): it carries more
+    information per run than a binary medal and guards against a medal
+    difference that is really threshold luck. mle-bench's CompetitionReport
+    gives medal booleans and thresholds but no percentile, so it is computed
+    here.
+
+    Reported as the fraction of leaderboard teams the submission beats, so higher
+    is better under both metric directions.
+    """
+    if report.get("score") is None or not report.get("valid_submission"):
+        return None
+    path = leaderboard_path(competition_id=competition_id)
+    if path is None:
+        logger.warning("no leaderboard available for %s", competition_id)
+        return None
+    try:
+        with path.open() as handle:
+            scores = [
+                float(row["score"])
+                for row in csv.DictReader(handle)
+                if row.get("score") not in (None, "")
+            ]
+        if not scores:
+            return None
+        score = report["score"]
+        if report.get("is_lower_better"):
+            beaten = sum(1 for other in scores if score < other)
+        else:
+            beaten = sum(1 for other in scores if score > other)
+        return round(beaten / len(scores), 5)
+    except Exception:
+        logger.exception("leaderboard percentile failed: %s", path)
+        return None
 
 
 # ── orchestration ───────────────────────────────────────────────────────
@@ -240,15 +526,21 @@ def execute_run(*, run: dict, data_dir: Path) -> dict:
             submission_path=outputs.submission_path,
             journal_path=outputs.journal_path,
             solution_path=outputs.solution_path,
-            extra_paths=(outputs.token_usage_path,),
+            extra_paths=(outputs.token_usage_path, *outputs.viz_paths),
         )
+        # Check BEFORE advancing status. Recording agent_run for a run that
+        # produced nothing leaves it unretryable: the next --retry-abandoned
+        # sees agent_run, skips the agent entirely, and fails at grading in 0s.
+        # Artifacts are preserved above either way, so a failed run is still
+        # inspectable.
+        if not outputs.submission_path:
+            raise RuntimeError(f"{run_key}: agent produced no submission")
         advance.record_agent_run(
             run_key=run_key,
             submission_path=outputs.submission_path,
             trajectory_path=outputs.journal_path,
-            wallclock_secs=outputs.metrics.get("wallclock_secs"),
             steps=outputs.metrics.get("steps"),
-            time_to_first_valid_secs=outputs.metrics.get("time_to_first_valid_secs"),
+            metrics=outputs.metrics,
             agent_id=run.get("agent_id", "aide-prelude"),
         )
 
@@ -259,10 +551,40 @@ def execute_run(*, run: dict, data_dir: Path) -> dict:
     report_path = _grade(
         run=run, submission_path=submission_path, data_dir=data_dir, report_dir=report_dir
     )
+    # The report lives on the ephemeral run dir like the agent outputs did, and
+    # the registry keeps only the extracted fields — so without this copy
+    # --terminate-on-done destroys the primary grading evidence.
+    artifacts.preserve_agent_outputs(run_key=run_key, extra_paths=(str(report_path),))
     report = advance._report_for(
         report_path=report_path, run_key=run_key, competition_id=run["competition_id"]
     )
+    report["leaderboard_percentile"] = _leaderboard_percentile(
+        competition_id=run["competition_id"], report=report
+    )
     return advance.record_graded(run_key=run_key, report=report)
+
+
+def _results_survive_termination() -> bool:
+    """Is the results root on a different filesystem than the repo?
+
+    The guard exists because every previous mechanism for this failed silently:
+    setup_cloudbox.sh's symlink was skipped with a warning buried in a long
+    provisioning log, and an unset env var looks identical to a correct one until
+    the instance is gone. Comparing st_dev is the only check that reflects
+    physical reality rather than intent — whatever the configuration claims, the
+    files are either on the volume or they are not.
+
+    Terminating with results on the boot disk destroys every artifact the run
+    produced, so the check runs immediately before the irreversible step.
+    """
+    results = registry.results_root()
+    if not results.exists():
+        return False
+    repo = Path(__file__).resolve().parent.parent
+    try:
+        return results.resolve().stat().st_dev != repo.stat().st_dev
+    except OSError:
+        return False
 
 
 def _abandon(*, run: dict, error: str) -> None:
@@ -336,6 +658,16 @@ def run_batch(
             raise SystemExit(
                 "--terminate-on-done requires --instance-id (from the launch response)"
             )
+        if not _results_survive_termination():
+            logger.error(
+                "REFUSING to terminate %s: results root %s is on the boot disk. "
+                "Set %s to a path on the persistent volume, or rsync the results "
+                "off the box first. The instance is left running.",
+                instance_id,
+                registry.results_root(),
+                registry.RESULTS_ENV,
+            )
+            return summary
         logger.info("terminating instance %s", instance_id)
         lambda_ctl.terminate_instance(instance_id=instance_id)
 

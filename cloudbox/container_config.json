@@ -1,0 +1,17 @@
+{
+    "mem_limit": null,
+    "shm_size": "4G",
+    "nano_cpus": 30000000000,
+    "runtime": "runc",
+    "device_requests": [
+        {
+            "Driver": "nvidia",
+            "Count": -1,
+            "Capabilities": [
+                [
+                    "gpu"
+                ]
+            ]
+        }
+    ]
+}

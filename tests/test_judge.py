@@ -12,8 +12,8 @@ FLAGS = [
 ]
 
 JUDGMENTS = [
-    FlagJudgment(classification="acted_on_positive", evidence_quote="GroupKFold(...)", reasoning="used"),
-    FlagJudgment(classification="acted_on_unclear", evidence_quote="TimeSeriesSplit(...)", reasoning="used, effect unclear"),
+    FlagJudgment(classification="acted_on", evidence_quote="GroupKFold(...)", reasoning="used"),
+    FlagJudgment(classification="acted_on", evidence_quote="TimeSeriesSplit(...)", reasoning="used, effect unclear"),
     FlagJudgment(classification="not_acted_on", evidence_quote="", reasoning="no budgeting found"),
 ]
 
@@ -25,7 +25,7 @@ def test_judge_flags_calls_llm_per_flag(monkeypatch):
         calls.append(user)
         assert "FROZEN" in system  # rubric text is embedded
         return FlagJudgment(
-            classification="acted_on_unclear", evidence_quote="some_code()", reasoning="r"
+            classification="acted_on", evidence_quote="some_code()", reasoning="r"
         )
 
     monkeypatch.setattr(judge, "call_llm", fake_call_llm)
@@ -38,7 +38,7 @@ def test_acted_on_without_quote_is_invalidated(monkeypatch):
     monkeypatch.setattr(
         judge,
         "call_llm",
-        lambda **_: FlagJudgment(classification="acted_on_positive", evidence_quote="  ", reasoning="r"),
+        lambda **_: FlagJudgment(classification="acted_on", evidence_quote="  ", reasoning="r"),
     )
     judgments = judge_flags(flags=FLAGS[:1], solution="code")
     assert judgments[0].classification == "not_acted_on"
@@ -50,7 +50,6 @@ def test_aggregate_by_category():
     iid = table["iid_violation"]
     assert iid["detected"] == 2
     assert iid["action_rate"] == 1.0
-    assert iid["positive_rate"] == 0.5
     assert iid["retrieval_grounded_fraction"] == 0.5
     resource = table["resource_constraint_violation"]
     assert resource["detected"] == 1

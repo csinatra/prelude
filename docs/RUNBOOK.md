@@ -44,8 +44,11 @@ python -m harness.runner --competition spooky-author-identification \
 
 Produces `results/{comp}_{condition}_{seed}/` (spec.md, retrievals,
 pipeline output, llm_usage.json, manifest) and a `spec_built` registry
-entry. Build the full grid per RESEARCH_DESIGN.md (B1/B2/C2 x ~10 Lite
-competitions x 3 seeds; C1 pilot subset). Spot-check one spec.md per
+entry. Build the full grid per RESEARCH_DESIGN.md (A/B1/B2/C2 x the eval
+competitions x 3 seeds; C1 pilot subset). `--condition A` takes the same
+command but builds no spec and makes no LLM call: it only registers the run,
+so no run directory appears until the agent's outputs are preserved into it.
+Spot-check one spec.md per
 condition before shipping.
 
 Ship to the box (results/ is gitignored — transfer directly):
@@ -113,12 +116,10 @@ run's `run.log` under `runs/<group>/<comp>_<uuid>/`: a clean run gets past AIDE
 drafting into code execution across its 8 steps and lands a `submission.csv` +
 AIDE journal in the run's output dir.
 
-Discard the smoke result: the 8-step dev budget is too short to be a valid
-Condition A run, and the competition is off-eval by design. The matched-A
-anchor is **separate and contingent** (RESEARCH_DESIGN.md Condition A note) —
-if triggered, it runs unmounted `aide-prelude` at the full budget on the eval
-competitions and enters the registry via `harness.advance register`
-(`--condition A`), then advances through agent-run/graded as in step 6.
+Discard the smoke result. It runs unmounted and so looks like a Condition A run,
+but it is not a data point: the dev budget is a fraction of the eval budget and
+the competition is off-eval by design. A's runs are prepared with every other
+condition in step 2.
 
 ## 5. Condition runs
 
@@ -134,8 +135,14 @@ cd ~/work/mle-bench
 echo <competition> > experiments/splits/<run_key>.txt
 PRELUDE_SPEC_PATH=~/work/prelude/results/$PRELUDE_REGISTRY_STAGE/<run_key>/spec.md \
   .venv/bin/python run_agent.py --agent-id aide-prelude \
-    --competition-set experiments/splits/<run_key>.txt --data-dir $MLEBENCH_DATA_DIR
+    --competition-set experiments/splits/<run_key>.txt --data-dir $MLEBENCH_DATA_DIR \
+    --container-config ~/work/prelude/cloudbox/container_config.json
 ```
+
+`--container-config` is not optional: mle-bench's default gives the agent 4
+vCPUs and no GPU, against the benchmark's own 36-vCPU + A10 baseline. `harness.batch`
+passes it automatically; a manual run must pass it too, or the run is not
+comparable to the others. See [cloudbox/README.md](../cloudbox/README.md).
 
 **Confirmed on box (2026-07-24):** the B/C spec mount works end-to-end. On a
 `random-acts-of-pizza` `/dev` run, `run.py` logged `cat /home/spec/spec.md`
@@ -228,7 +235,21 @@ accounting section of RESEARCH_DESIGN.md.
 
 - Release GPU instances between batches; the volume persists.
 - The registry is the spend ledger: `spec_llm_*` fields for upfront cost,
-  `agent_wallclock_secs` for GPU time. Reconcile against COST_ESTIMATE.md
-  as runs accumulate — flag early if per-run actuals exceed estimates.
-- The contingent A arm (~30 runs) triggers only per the decision rule in
-  RESEARCH_DESIGN.md — not by default.
+  `agent_llm_*` for the agent side, `agent_wallclock_secs` for GPU time.
+  Reconcile against COST_ESTIMATE.md as runs accumulate — flag early if per-run
+  actuals exceed estimates.
+- **Checking on an unattended drain.** `harness.status` reads the registry, so
+  live state means running it on the box. One-shot from the dev machine, no
+  session to keep alive:
+
+  ```bash
+  ssh <box> 'cd ~/work/prelude && .venv/bin/python -m harness.status --logs'
+  ```
+
+  `--logs` names the running container and prints the `docker logs -f` command
+  to stream it; `--follow` polls until the queue drains, for a second terminal
+  left open. Run on the dev machine it works but reports whatever was last
+  synced, and finds no container. A stall is flagged only while work is
+  outstanding, so a finished queue's silence is not reported as a problem.
+- Serial runtime is a scoping constraint alongside cost: one instance drains the
+  queue one run at a time, so the per-run cap sets how long the whole grid takes.

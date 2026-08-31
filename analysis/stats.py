@@ -17,8 +17,18 @@ Three numbers are reported per contrast:
   - the direction summary, the fraction of competition-seed pairs where the
     treatment beats the baseline, which does not depend on medal thresholds
 
-H1 is supported only if all three agree: positive mean delta, interval
-excluding zero, direction summary above one half.
+A positive signal is all three agreeing: positive mean delta, interval excluding
+zero, direction summary above one half. Read together as a direction worth
+powering at a larger n, NOT as a pass/fail verdict on H1 (revised 2026-08-31 —
+the plan previously adjudicated, which over-formalized what 3-5 competitions can
+decide).
+
+Missing data is a policy, not an accident. A run whose agent finished but which
+never produced a gradeable submission stops at status `agent_run`, because
+harness.batch raises rather than recording a grade, so it carries no outcome
+fields at all. Skipping those silently would make whichever condition caused
+more of them look better, so metrics in NONSUBMISSION_FLOOR are floored rather
+than dropped, and every result reports how many were floored on each side.
 
 numpy only, no scipy: the bootstrap is a plain percentile bootstrap and adding a
 dependency for it is not worth the install surface.
@@ -33,6 +43,13 @@ import numpy as np
 CI_LEVEL = 0.90
 N_RESAMPLES = 10_000
 BOOTSTRAP_SEED = 0
+
+# Metrics where a non-submission is a real value rather than absent data, mapped
+# to the value it takes. Any-Medal only: a run that submitted nothing did not
+# medal, so 0 is the honest entry. Leaderboard percentile is deliberately absent
+# — it is undefined without a score, and inventing a floor there would fabricate
+# a placement. Everything else is skipped as before.
+NONSUBMISSION_FLOOR = {"any_medal": 0.0}
 
 
 @dataclass(frozen=True)
@@ -49,14 +66,23 @@ class PairedResult:
     ci_high: float
     direction_fraction: float
     per_competition: dict[str, float] = field(default_factory=dict)
+    # Non-submissions entering at the floor, per side. Reported so the
+    # denominator behind a delta is always visible.
+    n_floored_treatment: int = 0
+    n_floored_baseline: int = 0
 
     @property
     def interval_excludes_zero(self) -> bool:
         return self.ci_low > 0.0 or self.ci_high < 0.0
 
     @property
-    def supports_h1(self) -> bool:
-        """All three pre-registered conditions met (positive, interval clear, majority)."""
+    def positive_signal(self) -> bool:
+        """All three pre-registered indicators agree (positive, interval clear, majority).
+
+        A direction worth powering at a larger n, not a verdict that H1 passed.
+        The distinction is the point of the 2026-08-31 revision: at 3-5
+        competitions a pass/fail bar claims more than the design can support.
+        """
         return (
             self.mean_delta > 0.0
             and self.interval_excludes_zero
@@ -64,19 +90,52 @@ class PairedResult:
         )
 
 
+def is_nonsubmission(*, run: dict) -> bool:
+    """The agent finished and no grade was ever recorded.
+
+    harness.batch raises rather than recording a grade when there is no
+    submission to grade, so such a run stops at `agent_run` holding no outcome
+    fields. An abandoned run is excluded: it was parked deliberately and is not
+    evidence about the condition.
+    """
+    return run.get("status") == "agent_run" and not run.get("abandoned")
+
+
+def _value(*, run: dict, metric: str) -> float | None:
+    """One run's value for a metric under the pre-registered missing-data rule.
+
+    The single seam through which every statistic reads a metric, so the paired
+    deltas and the direction summary always agree on which runs count.
+    """
+    value = run.get(metric)
+    if value is not None:
+        return float(value)
+    if metric in NONSUBMISSION_FLOOR and is_nonsubmission(run=run):
+        return NONSUBMISSION_FLOOR[metric]
+    return None
+
+
 def _by_competition(
     *, runs: list[dict], condition: str, metric: str
-) -> dict[str, list[float]]:
-    """Metric values per competition for one condition, skipping missing values."""
+) -> tuple[dict[str, list[float]], int]:
+    """Metric values per competition for one condition, plus the floored count.
+
+    Missing values are skipped, EXCEPT non-submissions on a NONSUBMISSION_FLOOR
+    metric, which enter at the floor. See the module docstring for why dropping
+    them is not neutral.
+    """
     grouped: dict[str, list[float]] = {}
+    floored = 0
     for run in runs:
         if run.get("condition") != condition:
             continue
-        value = run.get(metric)
+        value = _value(run=run, metric=metric)
         if value is None:
             continue
-        grouped.setdefault(run["competition_id"], []).append(float(value))
-    return grouped
+        if run.get(metric) is None:
+            floored += 1
+        grouped.setdefault(run["competition_id"], []).append(value)
+    return grouped, floored
 
 
 def paired_deltas(
@@ -88,8 +147,8 @@ def paired_deltas(
     an unpaired competition would reintroduce the between-competition variance
     the pairing exists to remove.
     """
-    treated = _by_competition(runs=runs, condition=treatment, metric=metric)
-    control = _by_competition(runs=runs, condition=baseline, metric=metric)
+    treated, _ = _by_competition(runs=runs, condition=treatment, metric=metric)
+    control, _ = _by_competition(runs=runs, condition=baseline, metric=metric)
     return {
         competition: float(np.mean(treated[competition]) - np.mean(control[competition]))
         for competition in sorted(set(treated) & set(control))
@@ -106,7 +165,7 @@ def direction_fraction(
     that is frequently equal (e.g. a binary medal at 0) is not scored as a win.
     """
     keyed = {
-        (run["competition_id"], run["seed"], run["condition"]): run.get(metric)
+        (run["competition_id"], run["seed"], run["condition"]): _value(run=run, metric=metric)
         for run in runs
     }
     wins = 0.0
@@ -161,10 +220,12 @@ def compare(
     )
     values = list(deltas.values())
     ci_low, ci_high = bootstrap_interval(deltas=values)
+    _, floored_treatment = _by_competition(runs=runs, condition=treatment, metric=metric)
+    _, floored_baseline = _by_competition(runs=runs, condition=baseline, metric=metric)
     pairs = {
         (run["competition_id"], run["seed"])
         for run in runs
-        if run.get("condition") == treatment and run.get(metric) is not None
+        if run.get("condition") == treatment and _value(run=run, metric=metric) is not None
     }
     return PairedResult(
         metric=metric,
@@ -179,16 +240,25 @@ def compare(
             runs=runs, treatment=treatment, baseline=baseline, metric=metric
         ),
         per_competition=deltas,
+        n_floored_treatment=floored_treatment,
+        n_floored_baseline=floored_baseline,
     )
 
 
 def format_result(*, result: PairedResult) -> str:
     """One-line readout for the writeup tables."""
+    floored = result.n_floored_treatment + result.n_floored_baseline
     return (
         f"{result.metric}: {result.treatment} vs {result.baseline} | "
         f"delta={result.mean_delta:+.3f} "
         f"[{int(CI_LEVEL * 100)}% CI {result.ci_low:+.3f}, {result.ci_high:+.3f}] | "
         f"direction={result.direction_fraction:.2f} | "
-        f"n_comp={result.n_competitions} n_pairs={result.n_pairs} | "
-        f"H1={'supported' if result.supports_h1 else 'not supported'}"
+        f"n_comp={result.n_competitions} n_pairs={result.n_pairs}"
+        # Only when non-zero: a floored run is an exception worth seeing, and a
+        # constant "floored=0" would train the reader to skip past it.
+        + (
+            f" | floored={result.n_floored_treatment}/{result.n_floored_baseline}"
+            if floored
+            else ""
+        )
     )

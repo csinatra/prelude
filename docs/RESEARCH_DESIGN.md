@@ -37,19 +37,66 @@ baseline (A); that comparison is invalid because the published AIDE runs
 used gpt-4o-2024-08-06, not our agent model — see the Condition A note
 under the experimental design.)*
 
-**H2 (mechanism, within-C2):** C2's specification flags
-are acted on by the agent at rates that vary systematically by flag category, and
-flags recorded as acted on are associated with better outcomes than flags
-recorded as not acted on.
+**H2 (mechanism):** C2's specification flags are acted on by the agent above the
+rate at which unconditioned solutions address the same mechanisms, and that
+effect varies systematically by flag category; flags recorded as acted on are
+associated with better outcomes than flags recorded as not acted on.
 
-*Scope limit (added 2026-08-11, pre-run).* This is a within-C2 claim, not a
-mediation claim about the C2-versus-B2 difference. Specification flags exist only
-in C2, so the frozen rubric produces no comparable measure of whether B2's
-freeform advice was acted on. H2 can establish that C2's structured flags reach
-the agent's behavior; it cannot establish that they do so more reliably than
-B2's prose advice does. This is a limitation of the **instrument**, not of sample
-size: it would persist at full scale unless a B-side measure is added, which is
-roadmapped rather than in v1 scope.
+*Base-rate counterfactual (added 2026-08-25, pre-run).* An action rate alone is
+uninterpretable, because some mechanisms are addressed by competent default
+practice whether or not anything flagged them. Each C2 run's flag set is
+therefore judged a second time against the paired **B2** solution for the same
+competition and seed, the flag unchanged and only the solution differing, giving
+
+    P(addressed | spec delivered)       from the C2 run
+    P(addressed | spec not delivered)   from the paired B2 run
+
+**What is being compared.** The unit is a (competition, flag) pair; the
+treatment is receiving C2's specification; the outcome is the rubric's binary
+action class. The paired difference is the effect of delivering the spec on
+whether the mechanism was addressed, and the per-category breakdown is that
+same effect conditioned on flag category, so the heterogeneity clause above is
+a claim about where the effect concentrates rather than a descriptive one. The
+comparison is genuinely counterfactual, but it is left in plain terms. Formal
+treatment-effect notation would imply more precision than 3 to 5 competitions
+support. This costs judge calls only, no additional agent runs, since it reuses
+runs already in the grid. The judge is condition-blind (docs/JUDGE_RUBRIC.md), so it cannot know
+which side of the comparison a solution came from.
+
+**Confirmatory control is B2; B1 and C1 are descriptive.** B2 is the
+pre-registered control because it is the headline contrast and it keeps the
+human anchor at two conditions. B1 and C1 are judged the same way and reported
+as a gradient — action rate against increasing spec structure — carrying no
+separation criterion, because a monotonic trend across four arms cannot be
+established at 3–5 competitions. Condition-blind judging is what licenses
+applying the instrument to arms the human anchor did not cover: the judge cannot
+behave differently by condition when it cannot see the condition.
+
+**Two properties of the comparison that bound what may be claimed.** The treatment
+is *compound*: C2 delivers its flags inside a longer, more structured document,
+so what is identified is the effect of receiving C2's spec, not of any isolated
+flag. Separating content from format is the negative-control arm's job (v1.5).
+And flag observations are *clustered within runs* — one spec delivers many
+flags, and the agent's response to one may not be independent of the others — so
+the effective sample size is competitions, not flags. The bootstrap resamples
+competitions accordingly, and a flag-level count must never be reported as
+though it were an independent n.
+
+*Scope limit (revised 2026-08-25, pre-run; supersedes the 2026-08-11 note that
+scoped H2 within-C2).* The base rate is not a measure of whether B2's *prose
+advice* was followed; that remains unmeasurable, since the rubric classifies
+flags and B2 has none. The earlier note conflated the two questions. What the
+counterfactual establishes is narrower and still useful: the rate at which the
+flagged mechanisms are addressed absent the specification.
+
+*What this deliberately does not attempt.* Per-flag causal attribution by
+tracing AIDE's node lineage. Lineage records how the agent responded to its own
+prior results, which is credit assignment over a reward signal and answers a
+different causal question than H2 asks; its depth also varies with search-tree
+shape rather than with agent behavior, so evidence volume would differ between
+otherwise identical flags. Causal purchase here comes from between-condition
+comparison under the design, not from reconstructing why any single instance
+occurred.
 
 **H3 (efficiency, added 2026-08-13, pre-run):** Front-loading specification
 effort directs the agent's search, so conditioned runs converge faster than
@@ -108,6 +155,20 @@ upfront spec) and on a much smaller, easier task set than MLE-bench Lite.
   difference: DS-Agent's retrieval is revised iteratively against execution
   feedback in a CBR loop; Prelude's spec is built once, upfront, before the
   agent's own search begins.
+- **Automated Weak-to-Strong Researcher** (Wen, Qiu, Benton, Kirchner, Leike;
+  Anthropic Alignment Science, 2026; partly done through the Anthropic Fellows
+  Program): close prior art, and the work that most directly tests a
+  structurally analogous question to this one. It asks whether upfront
+  structure or specificity helps or hurts an autonomous ML research agent whose
+  output is gradable, which is the same shape as H1. Their domain differs:
+  agents propose ideas and run experiments over multi-day parallel exploration
+  in weak-to-strong alignment research, where this project studies bounded ML
+  engineering competitions with a fixed metric. Their headline finding runs
+  partly against H1's premise, that less imposed structure leads to better
+  performance. A fixed prescriptive workflow underperformed full autonomy, and
+  a pool of specific pre-generated research ideas underperformed giving agents
+  ambiguous directions and letting them propose the concrete idea themselves.
+  Engaged directly in the mechanistic evaluation notes below.
 - **MLE-Dojo** (Qiang et al., May 2025): interactive Gym-style benchmark
   environment built on 200+ Kaggle competitions, supporting SFT/RL agent
   training. Different axis from Prelude — an alternative/broader execution
@@ -167,7 +228,7 @@ built plus one grid-external anchor:
 
 | Condition | Retrieval | Synthesis | Isolates (vs) |
 |---|---|---|---|
-| A | none | none | no-assistance anchor — matched agent, contingent arm (see note) |
+| A | none | none | no-assistance anchor — matched agent (see note) |
 | B1 | flat, single query | none — raw context block | knowledge provision per se (vs A) |
 | B2 | flat, single query | freeform, stance-free | LLM preprocessing (vs B1) |
 | C1 | staged, 4 directed queries | freeform, stance-free (B2's path) | staged retrieval (vs B2) |
@@ -193,7 +254,7 @@ flowchart TD
     SR --> ST["surface → flag → advise<br/>(structured stages, RETRIEVAL_STANCE)"]
     ST --> C2["C2 spec:<br/>staged block + framing,<br/>signals, flags, recommendations"]
 
-    A["Condition A (contingent):<br/>no spec mounted = stock AIDE"]
+    A["Condition A:<br/>no spec mounted = stock AIDE"]
 ```
 
 ### Staged pipeline — queries, prompts, schemas
@@ -315,24 +376,62 @@ they address — the structure whose downstream effect this POC measures.
 
 Design notes:
 
-- **Condition A (decided 2026-07-16, pre-run):** the published MLE-bench
-  AIDE baseline used `gpt-4o-2024-08-06` as the code model and is not
-  model-matched to our runs — it is cited as context only and never
-  compared statistically. A *matched* A exists for free in the harness:
-  `aide-prelude` with no spec mounted is byte-identical to stock AIDE
-  (same agent model, hardware, time/step budgets, mle-bench version).
-  It is pre-registered as a **contingent arm**, not a primary condition:
-  the full A arm (~30 runs, est. +\$200–250) — unmounted `aide-prelude` on
-  the eval competitions at the same model/hardware/budget as B/C — triggers
-  only if C2 fails to separate from B, or any condition lands below the
-  plausible no-assistance range, the outcomes under which "is retrieval
-  beneficial at all, or detrimental?" becomes load-bearing for
-  interpretation. Infrastructure smoke runs (RUNBOOK step 4) are decoupled
-  from this: they use the 8-step `dev` variant on a held-out off-eval
-  competition and are throwaway integration checks, **not** matched-A data
-  points — the dev budget is too short to be a valid A run. The core
-  research question (structured reasoning + directed retrieval vs naive
-  provision) is carried by the B/C contrasts and does not require A.
+- **Condition A (pre-registered 2026-08-25, pre-run):** a primary arm, run at
+  every eval competition and seed. `aide-prelude` with no spec mounted is stock
+  AIDE and requires no new code, inheriting the same agent model, hardware,
+  budget, and mle-bench version as every other condition in the grid.
+
+  It supplies the bottom rung of the decomposition ladder. B1's isolated
+  variable is knowledge provision per se, which is defined against A; without A
+  that contrast has no partner. More consequentially, A is what makes the null
+  case readable: if C2, B2 and B1 all land together, only A distinguishes
+  "structure does not help" from "every condition is worse than no
+  specification at all". The headline claim does not rest on it — the powered
+  contrast is C2 vs B2, and H1 is stated relative to unstructured provision
+  rather than to nothing — but without A one plausible outcome of the grid is
+  uninterpretable rather than merely unpowered.
+
+  The published MLE-bench AIDE baseline is **not cited as a comparison** in
+  either direction. It carries two independent mismatches: a different code
+  model (`gpt-4o-2024-08-06`), and MLE-bench's reference budget of 500 steps /
+  24h where this grid runs below it. Neither a statistical nor a directional
+  reading of it is admissible here; A is the only no-assistance anchor this
+  design uses.
+
+  *Budget, pending.* The decision to run below the reference budget is made;
+  the value is not. Serial runtime across ~39–63 runs is a scoping constraint
+  in its own right, so the per-run cap is pinned from the calibration run's
+  convergence curve rather than chosen up front — see H3. Until then
+  `cloudbox/agents/aide-prelude/config.yaml` carries the calibration setting,
+  not the eval one.
+
+  *Where the budget is calibrated.* The calibration competition is
+  `uw-madison-gi-tract-image-segmentation`, chosen from mle-bench's medium
+  split under three constraints. It must sit **outside Lite-22**, per the
+  development holdout above. Its **retrieval neighbourhood must not be
+  dominated by a single sibling competition**, which a leave-one-out probe of
+  every medium-split vision competition found to be the common case rather than
+  the exception — `imet-2020` draws 14/15 of its top documents from
+  `imet-2019`, `whale-categorization` 15/15 from
+  `humpback-whale-identification`. And its **compute regime must resemble
+  Lite's heavier competitions**, or the pinned budget will not transfer.
+
+  Those constraints eliminate the obvious candidate.
+  `cassava-leaf-disease-classification` is the closest regime match to Lite's
+  image-classification majority, but its top-15 is 15/15 from
+  `plant-pathology-2020-fgvc7` — an eval competition — and the relation is
+  symmetric, so calibrating there means pinning the budget against a near-twin
+  of test. The lighter fallback, `tgs-salt-identification-challenge`, is
+  re-split by mle-bench to ~3,000 images at 101×101; steps there are too cheap
+  to reach the resource limits a heavier modeling approach would hit, so it
+  would pin a budget too small for the tasks it has to cover. uw-madison gives
+  ~34k slices across 85 cases, a scale comparable to `aptos2019` and
+  `histopathologic-cancer-detection`; five distinct source competitions with no
+  Lite overlap; and a train/test split taken **by case**, which is a framing
+  trap in its own right and so makes the run informative about spec quality as
+  well as budget. Accepted risk: multi-class RLE submission is harder to get
+  valid at all, a failure visible in the first steps rather than at the budget
+  ceiling.
 - **Retrieval unit held constant.** All conditions receive practitioner
   knowledge as **notebook summaries** (one LLM abstract per notebook) plus
   flat competition-metadata chunks. B retrieves summaries with one flat query;
@@ -363,6 +462,15 @@ Design notes:
   The C1 pilot is a *qualitative decomposition aid* that indicates which of
   the two mechanisms is worth powering in v1.5. Any decomposition read off a
   single seed is a hypothesis for the next round, not a result.
+- **Every competition used to develop or tune anything is held out of the eval
+  subset.** Two are reserved on this basis. `random-acts-of-pizza` is the
+  integration competition (RUNBOOK step 4): the pipeline, prompts, spec
+  injection, and harness were debugged against it over weeks, which is tuning
+  whatever the runs were called. `uw-madison-gi-tract-image-segmentation` is
+  the calibration competition, where the agent step budget is pinned. Neither
+  is eligible for the eval subset, and results from neither are pooled with
+  eval results — a constraint on the pinning decision below, enforced
+  operationally by per-stage registry isolation (docs/DATA.md).
 - AIDE scaffold, agent model, and MLE-bench grading are held constant across
   all run conditions (A/B/C). This constancy is what makes the matched-A
   baseline valid and the B-vs-C contrast clean: the only manipulated variable
@@ -498,7 +606,17 @@ Each measure is defined once, under the hypothesis it serves.
 - *Higher resolution:* leaderboard percentile of the final submission, and
   valid-submission rate (fraction of runs producing a gradeable submission).
   These carry more information per run than a binary medal and guard against a
-  medal difference that is really threshold luck.
+  medal difference that is really threshold luck. The percentile — the fraction
+  of leaderboard teams the submission beats, direction-aware so higher is always
+  better — is not in mle-bench's grading report and is computed by the batch
+  driver at grade time. The reference distribution is the static snapshot of the
+  historical Kaggle leaderboard that mle-bench ships per competition; nothing is
+  submitted to Kaggle and grading is entirely local, so a percentile states where
+  a run's score *would* have placed among those teams. Because that snapshot is a
+  git-lfs file inside the mle-bench checkout, which exists only on the cloud box,
+  each leaderboard is copied onto the results root on first use — otherwise the
+  measure is computable exactly once and cannot be re-derived or audited after
+  the instance is destroyed.
 
 **H2 (mechanism).** Whether C2's flags reached the agent's behavior. Measured by
 per-flag judging against the frozen rubric, aggregated per category; see
@@ -521,6 +639,20 @@ Aggregation across competitions uses a scale-free statistic:
   time-to-first-valid-submission secondary. Steps lead because wall-clock varies
   with data size, with whichever model the agent happens to try, and with GPU
   contention, none of which reflect search efficiency.
+- *Descriptive, added 2026-08-24 pre-run:* steps and time to the run's **best**
+  validation score, the pair to first-valid — first-valid is how fast the agent
+  reached something that works, best is how fast it reached the best thing it
+  found. Both summarize the per-step score curve already collected below, so
+  this introduces no new comparison, and it carries no separation criterion.
+  Read it as censored: under a fixed step budget "best" is best-so-far, biased
+  toward runs that happened to peak early.
+- *Timing anchor.* All elapsed measures run from the first LLM call, recorded in
+  the token side-channel, to the milestone node's completion (`ctime +
+  exec_time`). AIDE stamps a node's `ctime` when its drafting call *returns*, so
+  the journal alone cannot see the first draft: measuring from the earliest
+  `ctime` reports exactly 0.0 whenever node 0 is already valid, which is the
+  outcome a good spec is most likely to produce and the case this hypothesis most
+  needs to resolve. Each run records which anchor was available.
 - *Cost, deliberately not the headline:* spec-build cost against agent cost is
   reported but does not carry the claim. It depends on the model pair and on GPU
   rental pricing, both environment-specific and liable to date, and the
@@ -579,16 +711,72 @@ this n would be unreadable whatever the true effect.
 - *Direction summary.* The fraction of competition-seed pairs where C2 beats
   B2, reported beside the interval. This is a sign-test-style readout that does
   not depend on where a run happens to fall relative to a medal threshold.
-- *Separation criterion, H1's headline metric only.* H1 is supported if the mean paired delta is
-  positive, the 90% bootstrap interval excludes zero, and the direction summary
-  exceeds one half. If any of the three fails, H1 is not supported at POC
-  scale. This is explicitly a directional criterion at this n. It is committed
-  in advance so that "beyond seed noise" in the hypothesis statement has a
-  fixed operational meaning rather than one selected after seeing results.
+- *What would count as a positive signal, H1's headline metric only (revised
+  2026-08-31, pre-run).* Committed in advance so that "beyond seed noise" in
+  the hypothesis statement carries a meaning fixed before the data rather than
+  chosen after it: a positive mean paired delta, a 90% bootstrap interval
+  sitting mostly above zero, and a direction summary above one half. These are
+  read together, as a direction worth powering at a larger n. They are
+  deliberately **not** a pass/fail bar. An earlier version of this plan stated
+  them as a three-part criterion that H1 either met or failed, which
+  over-formalized what 3 to 5 competitions can decide and sat awkwardly beside
+  this design's own statement that v1 does not claim representative outcomes.
+  The commitment is retained; the adjudication is dropped.
 - *Every other measure.* Analyzed the same paired way, with the same interval and
-  direction summary, but carrying no separation criterion (see Multiplicity).
+  direction summary, and read descriptively (see Multiplicity).
+- *Runs with no gradeable submission (pre-registered 2026-08-31, pre-run).*
+  Whether these are dropped or scored changes H1, so the rule is fixed now.
+  **Agent failures**, where the agent had a working environment and still
+  produced nothing gradeable, are counted as non-medal for Any-Medal and
+  excluded from leaderboard percentile, which is undefined without a score.
+  Running out of budget, OOM on an architecture the agent chose, and reaching
+  for a library the image does not carry all fall here: the environment is held
+  constant across conditions, so navigating it is part of what is being
+  measured, and a spec that steers toward an available approach is legitimately
+  doing its job. Silently dropping these is the option specifically rejected,
+  because failure is not missing at random, and letting failures leave the
+  average makes whichever condition caused more of them look better.
+  **Environment failures**, where the agent never got a fair attempt (container
+  will not start, data not mounted, harness or driver error), are repaired and
+  re-run rather than scored. That carve-out is stated in advance deliberately:
+  applied after seeing results it would be indistinguishable from rescuing
+  inconvenient runs. It also commits the image composition to being **frozen
+  before eval runs begin**, since changing it mid-grid invalidates earlier runs
+  and requires re-running every condition. The per-condition non-submission
+  count is reported beside every H1 table either way, so the denominator stays
+  visible. Diagnosing *why* an agent failure happened remains a separate
+  post-run question and does not affect this rule.
+- *Graded fields recorded but not analyzed.* `above_median` and the per-tier
+  medal flags (`gold_medal`, `silver_medal`, `bronze_medal`) come free from
+  mle-bench's grading report and are kept in the registry, but Any-Medal is the
+  headline and these are descriptive only. Naming them here forecloses picking
+  a more favorable threshold after seeing results.
+- *Runs with a retrieval shortfall.* `retrieval_shortfall_count` records where
+  a staged retrieval could not contribute its full quota of new distinct
+  documents, meaning the document-budget parity invariant did not hold for that
+  run. Any such run is reported explicitly rather than quietly averaged in,
+  because its cross-condition comparison is compromised by construction. The
+  expectation on the rebuilt corpus is zero occurrences, which is the reason to
+  fix the rule now while it costs nothing.
+- *Covariate: retrieval concentration (pre-registered 2026-08-27, before any
+  eval run).* For each run, the number of distinct source competitions among
+  the retrieved documents, and the share held by the largest one. Concentration
+  varies widely across Lite-22 — distinct sources in the top-15 run from 1
+  (`plant-pathology-2020-fgvc7`, entirely `cassava`) through 4
+  (`dogs-vs-cats`) and 7 (`melanoma`) to 9 (`aerial-cactus`) — and it
+  plausibly moderates the contrast under test: where a flat draw has already
+  collapsed onto a single sibling competition, directed retrieval has less room
+  to differ from it, so C's mechanism should have least to work with exactly
+  there. Reported descriptively against the paired deltas; it carries no
+  separation criterion and is not a subgroup analysis. It is derived
+  post-hoc from `retrievals.json`, which already records `competition_id` and
+  `similarity` per retrieved document, so this commits to no new
+  instrumentation and no re-run — the reason to log it now is that naming a
+  moderator before seeing outcomes is what separates it from one discovered
+  after.
 - *Pinning.* The eval competition subset and the seed list are recorded in
-  DECISIONS.md before the first eval run.
+  DECISIONS.md before the first eval run, drawn from Lite-22 excluding the two
+  reserved development competitions above.
 
 Implemented in `analysis/stats.py` (paired deltas, bootstrap interval,
 direction summary), unit-tested against synthetic fixtures.
@@ -602,8 +790,9 @@ H3, not here.
   wall-clock, LLM call count, input/output tokens — per call, in stage
   order, so per-stage attribution is free.
 - *Agent side* (registry via `harness.advance`, journal preserved as the
-  trajectory artifact): run wall-clock, AIDE steps used,
-  time-to-first-valid-submission, and per-step score/time curves derived
+  trajectory artifact): run wall-clock, AIDE steps used, the first-valid and
+  best milestones above, token totals matching the spec side's, and per-step
+  score/time curves derived
   from the AIDE journal — enabling trajectory comparison across conditions
   and problem types. Per-step agent *token* usage is not in AIDE's journal
   by default; the aide-prelude Anthropic backend appends each call's usage
@@ -619,15 +808,93 @@ inputs — the registry alone keeps only outcome fields.
 
 ## Mechanistic evaluation
 
-Per-flag flag→action→outcome judging against the **frozen rubric**
+Per-flag flag→action judging against the **frozen rubric**
 (`docs/JUDGE_RUBRIC.md`; frozen before any run, amendment-controlled):
 each `SpecificationFlag` from a C2 run is classified `not_acted_on` /
-`acted_on_unclear` / `acted_on_positive` by an LLM judge
-(`analysis/judge.py`) that sees the solution artifacts but never the score.
-Aggregation per category: detection rate, action rate, outcome
-contribution, and retrieval-grounded fraction (non-empty
-`evidence_doc_ids`). Requires the artifact preservation layout in
+`acted_on` by an LLM judge (`analysis/judge.py`) that sees the solution
+artifacts but never the score and never the condition. Aggregation per
+category: detection rate, action rate, and retrieval-grounded fraction
+(non-empty `evidence_doc_ids`), each read against the base rate from the paired
+control run. Requires the artifact preservation layout in
 `analysis/artifacts.py`.
+
+*Why contribution is computed rather than judged (revised 2026-08-25, pre-run).*
+The rubric previously carried a third class asserting that a choice contributed
+to the outcome. It was retired because the judge cannot reach it: the rubric
+admits three evidence types for contribution, and one requires the run's score,
+which the same rubric forbids the judge from seeing. Whether action associates
+with better outcomes is therefore a post-hoc computation over the registry,
+where scores exist, rather than a class the judge assigns. This is also what H2
+asked for in the first place, comparing outcomes between flags recorded as acted
+on and not acted on. The cost is that no per-run claim is made that a specific
+choice helped; the association is across runs.
+
+*Note on how the injected spec persists, for interpreting these results later.*
+The spec is appended to the competition description as ADVISOR CONTEXT
+(`cloudbox/agents/aide-prelude/start.sh`) and reaches AIDE as `desc_file`,
+which becomes `task_desc`. AIDE rebuilds each prompt as Introduction, Task
+description, Memory, Instructions, so `task_desc` is re-sent verbatim on every
+call while Memory, the journal summary of prior nodes, is the part that is
+bounded and summarized. The spec therefore sits on the task side of that
+boundary and does not attenuate over a run.
+
+**RE-Bench** is the reason this is worth stating. It credits AIDE's tree search
+over whole solutions for handling long-horizon runs better than
+context-accumulating scaffolds, and separately finds that agents lose ground to
+human experts by holding onto stubborn incorrect assumptions. Those two
+observations invite an assumption that an injected specification would fade the
+way conversational context does. Here it does not.
+
+The consequence is symmetric, and should not be read as an advantage. A
+well-grounded spec keeps its framing in front of every node for the whole run.
+A poorly grounded one is equally persistent: its errors are re-presented at
+full strength at every step rather than being revised away by search, and the
+agent has no mechanism for discounting them. The injection is thus
+variance-increasing with respect to spec quality rather than strictly
+beneficial. This design does not isolate that effect, and nothing is resolved
+or altered here; it is recorded so that neither a strong nor a weak C2 result
+is attributed to the injection mechanism when it may belong to spec quality.
+
+*Structure that helps against structure that constrains.* **Automated
+Weak-to-Strong Researcher** (Anthropic Alignment Science, 2026, partly done
+through the Anthropic Fellows Program) found that imposing structure on an
+autonomous ML research agent hurt performance twice over. A rigid execution
+workflow underperformed full autonomy, and handing agents specific
+pre-generated research ideas underperformed giving them ambiguous directions
+and letting them propose the concrete idea themselves. The first result does not
+reach this design. It concerns constraining how an agent iterates, and AIDE's
+tree search is untouched by anything the spec pipeline produces. The spec
+changes what AIDE starts with, never how it may search, backtrack, or revise
+afterward.
+
+The second sits closer to the advise stage. `spec.md` is appended to the
+competition description and becomes part of the agent's initial context
+(`harness/injection.py`), and nothing in the harness requires AIDE to act on a
+given recommendation the way AAR's agents were assigned an idea as their working
+directive. That reduces the risk of the same failure without eliminating it. LLM
+agents anchor on strongly stated context absent any obligation to follow it,
+particularly under time pressure, which AIDE also operates under. The
+persistence note above sharpens the concern: a spec that never attenuates is one
+whose framing is re-presented at full strength at every step.
+
+No prompt or schema change follows from this. `RETRIEVAL_STANCE` already governs
+the advise stage, directing the model to reason from its own expertise first,
+treat retrieved excerpts as evidence for grounding or recalibrating claims, and
+disregard excerpts that are irrelevant or low quality. Retrieval also draws from
+a narrow set of genuinely related problems (`analysis/retrieval_diversity.py`),
+so a single strong recommendation reflects the evidence available. A minimum
+recommendation count in the schema, or an instruction to produce varied options,
+would manufacture alternatives in a bounded and verifiable domain where AAR's
+rationale for ambiguity, that many research directions are legitimately open,
+applies less directly.
+
+How far this can be checked is bounded by the same constraint that retired flag
+lineage tracking (2026-08-25). The preserved evidence is the best node, not the
+path to it, so a final solution can be read for consistency with a clear
+recommendation, but reasoned departure and never having engaged look alike at
+that resolution. It stays a qualitative observation during the transcript review
+that judge validation already performs, requiring no additional runs, and is not
+a measure.
 
 ## Threats to validity
 
@@ -650,6 +917,16 @@ contribution, and retrieval-grounded fraction (non-empty
     The limit lives in the grading mechanism rather than in the input text. A
     synthetic-corruption arm was considered and rejected on this basis
     (DECISIONS.md, 2026-08-07).
+  - *Independent corroboration that this is a property of the benchmark class.*
+    **RE-Bench** reaches the same conclusion about itself, for a different
+    benchmark built by a different team for a different purpose. Its limitations
+    section notes that the criteria making an environment gradeable, namely
+    comprehensible instructions, feasible scoring, and all necessary resources
+    supplied, are also what make it "less representative of real research,"
+    where unclear goals and impossible problems are common. The limitation
+    named here is therefore structural to automatically-graded AI R&D
+    evaluation rather than specific to MLE-bench or to this project. RE-Bench
+    does not resolve it; it reports having the same one.
   - *Mitigation within the epistemic case.* Competition selection favors Lite
     competitions with known data quirks such as leakage paths, temporal
     structure, and measurement gaps.
@@ -798,6 +1075,23 @@ decomposing.
 
 **Planned additions, not in v1 scope.**
 
+- *Outcome dispersion (exploratory, recorded 2026-08-25 pre-run).* Because
+  `task_desc` is re-sent verbatim at every step, a weak spec persists as
+  strongly as a strong one (see the spec-persistence note under Mechanistic
+  evaluation), predicting that C2's outcome dispersion is at least B2's even
+  where means coincide. Exploratory rather than secondary: no criterion, not
+  part of H1/H2/H3, and no commitment to run in v1 — but if computed it is
+  reported whichever way it comes out. Recording it now is what keeps it a
+  pre-specified prediction rather than a pattern noticed afterwards.
+  - *Answerable from v1 data, weakly.* Comparing C2 and B2 dispersion needs no
+    new runs, only scores already in the registry. Three seeds estimates a
+    variance poorly, so a null would be uninformative.
+  - *Not answerable in v1 at any n.* Attributing that dispersion to spec quality
+    is confounded by construction: each spec is used by exactly one agent run,
+    so spec-driven and agent-driven variance cannot be separated. Breaking the
+    pairing (M specs × N agent runs on one competition, ~18 runs) is the v1.5
+    arm that would answer it. If Condition A runs, its dispersion is pure agent
+    stochasticity and bounds how much of C2's spread could be spec-induced.
 - *Seed-count sensitivity note.* Fold AIRA-dojo's findings on seed variance and
   on the AIDE validation/test generalization gap into the limitations section.
   Three seeds sits below their recommended count; the paired analysis in the

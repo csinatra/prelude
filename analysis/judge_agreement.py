@@ -15,8 +15,16 @@ Blinding matters. The reviewer must not see the LLM's classification (which
 would anchor the judgment) or the run's score (which the rubric forbids the
 judge itself from seeing). The export therefore carries neither.
 
-Sampling is stratified over (category, LLM classification) so all three classes
-appear even when one is rare, which is the usual case for `not_acted_on`.
+Sampling is stratified over (category, LLM classification) so both classes
+appear even when one is rare.
+
+**Read kappa beside the marginals, not alone.** With two classes and skewed
+marginals — most flags landing `not_acted_on` is the expected case — chance
+agreement is high, so kappa can read low while raters agree on nearly every
+item. That is the prevalence paradox, not a weak judge. `Agreement` therefore
+reports percent agreement, the class balance, and PABAK alongside kappa, and a
+low kappa with high agreement and lopsided marginals must be reported as such
+rather than as a validation failure.
 
 No API cost: this reads existing judgments and writes files.
 
@@ -33,7 +41,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-CLASSES = ("not_acted_on", "acted_on_unclear", "acted_on_positive")
+CLASSES = ("not_acted_on", "acted_on")
 DEFAULT_SAMPLE_SIZE = 24
 SAMPLE_SEED = 0
 
@@ -47,27 +55,49 @@ class Agreement:
     percent_agreement: float
     cohens_kappa: float
     confusion: dict[tuple[str, str], int]
+    acted_on_prevalence: float
+
+    @property
+    def pabak(self) -> float:
+        """Prevalence-adjusted bias-adjusted kappa: 2 * observed - 1.
+
+        Reported beside kappa because it depends only on how often the raters
+        agree, not on the class balance. A large gap between the two is the
+        signature of the prevalence paradox and is the thing to report, since
+        kappa alone would understate agreement on a lopsided sample.
+        """
+        return 2.0 * self.percent_agreement - 1.0
 
     def summary(self) -> str:
         return (
             f"n={self.n} | percent agreement={self.percent_agreement:.1%} | "
-            f"Cohen's kappa={self.cohens_kappa:.3f}"
+            f"Cohen's kappa={self.cohens_kappa:.3f} | PABAK={self.pabak:.3f} | "
+            f"acted_on prevalence={self.acted_on_prevalence:.1%}"
         )
 
 
 def stratified_sample(
     *, judged: list[dict], size: int = DEFAULT_SAMPLE_SIZE, seed: int = SAMPLE_SEED
 ) -> list[dict]:
-    """Sample across (category, classification) strata, round-robin over strata.
+    """Sample across (category, classification, conditioned?) strata, round-robin.
 
     Round-robin rather than proportional allocation: the point is to cover the
     rare classes, and a proportional sample of a skewed judgment distribution
     would return almost entirely one class.
+
+    Base-rate items are a third stratum dimension so the anchor validates the
+    judge on both sides of the comparison H2 rests on. It is a boolean rather
+    than the condition itself, keeping the split coarse: the sample is ~24 items
+    and stratifying on four conditions would leave cells too thin to cover the
+    classes. Condition-blind judging is what lets the validated instrument be
+    applied to conditions the anchor did not separately cover.
     """
-    strata: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    strata: dict[tuple[str, str, bool], list[dict]] = defaultdict(list)
     class_counts: dict[str, int] = defaultdict(int)
     for item in judged:
-        strata[(item["category"], item["classification"])].append(item)
+        strata[
+            (item["category"], item["classification"], bool(item.get("is_base_rate")))
+        ].append(item)
         class_counts[item["classification"]] += 1
 
     rng = random.Random(seed)
@@ -161,16 +191,48 @@ def score_agreement(*, judged: list[dict], human: dict[str, str]) -> Agreement:
     for pair in pairs:
         confusion[pair] += 1
     agreed = sum(1 for left, right in pairs if left == right)
+    # Prevalence over both raters' labels, not just the judge's: it describes the
+    # sample kappa was computed on, and either rater's skew inflates chance
+    # agreement.
+    labels = [label for pair in pairs for label in pair]
     return Agreement(
         n=len(pairs),
         percent_agreement=agreed / len(pairs) if pairs else float("nan"),
         cohens_kappa=cohens_kappa(pairs=pairs),
         confusion=dict(confusion),
+        acted_on_prevalence=(
+            sum(1 for label in labels if label == "acted_on") / len(labels)
+            if labels
+            else float("nan")
+        ),
     )
 
 
 def _load_judged(path: Path) -> list[dict]:
     return json.loads(path.read_text())
+
+
+def _chain_nodes(sample: list[dict]) -> dict[str, list[dict]]:
+    """Trajectory nodes per solution for the HTML page, rebuilt from the same
+    seam the judge's bundle came from — so the page shows the judge's evidence,
+    not a second selection of it.
+
+    Keyed by the SOLUTION's run, not the flag's: a base-rate item's flags come
+    from a C2 run but were judged against a control run's code, and keying by
+    the flag's run would pair it with the wrong trajectory."""
+    from analysis.artifacts import run_root
+    from analysis.judge_review_page import solution_key
+
+    from analysis.judge_run import chain_nodes
+
+    runs = {solution_key(item=item) for item in sample}
+    nodes: dict[str, list[dict]] = {}
+    for run_key in runs:
+        run_dir = run_root() / run_key
+        solution_path = run_dir / "best_solution.py"
+        solution = solution_path.read_text() if solution_path.is_file() else ""
+        nodes[run_key] = chain_nodes(run_dir=run_dir, solution=solution)
+    return nodes
 
 
 if __name__ == "__main__":
@@ -193,10 +255,29 @@ if __name__ == "__main__":
         sample = stratified_sample(judged=judged, size=args.size)
         out = Path(args.out)
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(render_review_file(sample=sample))
+        if out.suffix == ".html":
+            from analysis.judge_review_page import render_review_page
+
+            from analysis.judge import RUBRIC_PATH
+
+            out.write_text(
+                render_review_page(
+                    sample=sample,
+                    nodes_by_run=_chain_nodes(sample),
+                    rubric_text=RUBRIC_PATH.read_text(),
+                )
+            )
+        else:
+            out.write_text(render_review_file(sample=sample))
         print(f"wrote {len(sample)} blinded items to {out}")
     else:
-        human = parse_review_file(text=Path(args.review).read_text())
+        review_path = Path(args.review)
+        if review_path.suffix == ".json":
+            from analysis.judge_review_page import parse_labels
+
+            human = parse_labels(text=review_path.read_text())
+        else:
+            human = parse_review_file(text=review_path.read_text())
         result = score_agreement(judged=judged, human=human)
         print(result.summary())
         for (llm_label, human_label), count in sorted(result.confusion.items()):

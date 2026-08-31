@@ -24,9 +24,15 @@ def test_agent_run_transition_preserves_spec_fields(seeded_registry):
     advance.record_agent_run(
         run_key="comp_B2_0",
         submission_path="/x/submission.csv",
-        wallclock_secs=3600.0,
         steps=42,
-        time_to_first_valid_secs=900.0,
+        metrics={
+            "wallclock_secs": 3600.0,
+            "steps_to_first_valid": 3,
+            "time_to_first_valid_secs": 900.0,
+            "steps_to_best": 9,
+            "time_to_best_secs": 2400.0,
+            "llm_input_tokens": 5000,
+        },
     )
     run = registry.load_runs()["comp_B2_0"]
     assert run["status"] == "agent_run"
@@ -34,7 +40,17 @@ def test_agent_run_transition_preserves_spec_fields(seeded_registry):
     assert run["agent_id"] == "aide-prelude"
     assert run["agent_wallclock_secs"] == 3600.0
     assert run["agent_steps"] == 42
+    assert run["agent_steps_to_first_valid"] == 3
     assert run["agent_time_to_first_valid_secs"] == 900.0
+    assert run["agent_steps_to_best"] == 9
+    assert run["agent_time_to_best_secs"] == 2400.0
+    assert run["agent_llm_input_tokens"] == 5000
+
+
+def test_agent_metrics_must_be_declared_to_reach_the_registry(seeded_registry):
+    """An undeclared metric key is dropped, so the field list stays the contract."""
+    advance.record_agent_run(run_key="comp_B2_0", metrics={"invented_measure": 1})
+    assert "agent_invented_measure" not in registry.load_runs()["comp_B2_0"]
 
 
 def test_graded_transition_records_metric_subset(seeded_registry):
@@ -74,7 +90,7 @@ def test_register_creates_specless_run_then_advances(seeded_registry):
     run = registry.load_runs()["comp_A_0"]
     assert run["status"] == "registered"
     assert run["condition"] == "A"
-    advance.record_agent_run(run_key="comp_A_0", wallclock_secs=100.0)
+    advance.record_agent_run(run_key="comp_A_0", metrics={"wallclock_secs": 100.0})
     assert registry.load_runs()["comp_A_0"]["status"] == "agent_run"
 
 

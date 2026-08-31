@@ -116,7 +116,7 @@ def test_registry_latest_entry_wins(tmp_path, monkeypatch):
 
 
 def test_run_condition_end_to_end(tmp_path, monkeypatch):
-    monkeypatch.setattr(artifacts, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr(registry, "RESULTS_DIR", tmp_path / "results")
     monkeypatch.setattr(registry, "RESULTS_DIR", tmp_path / "results")
     monkeypatch.setattr(runner, "DESCRIPTIONS_DIR", tmp_path / "descriptions")
     monkeypatch.setattr(runner, "_count_tokens", lambda *, text: 42)
@@ -146,6 +146,36 @@ def test_run_condition_end_to_end(tmp_path, monkeypatch):
     assert entry["spec_llm_input_tokens"] == 0
     assert entry["spec_build_secs"] >= 0
     assert json.loads((run_dir / "llm_usage.json").read_text()) == []
+
+
+def test_condition_a_registers_without_building_a_spec(tmp_path, monkeypatch):
+    """A mounts no spec, so it makes no LLM call and produces no spec artifact.
+
+    It still goes through this entry point so preparing the grid has one path
+    for every arm. `spec_path` must stay absent: harness.batch reads its presence
+    as "this condition has a spec", which is what keeps A's container unmounted
+    and therefore byte-identical to stock AIDE.
+    """
+    monkeypatch.setattr(registry, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr(
+        runner, "load_description", lambda **_: pytest.fail("A must not read a description")
+    )
+
+    assert (
+        runner.run_condition(competition_id="spooky-author-identification", condition="A", seed=1)
+        is None
+    )
+
+    entry = registry.load_runs()["spooky-author-identification_A_1"]
+    assert entry["status"] == "registered"
+    assert entry["condition"] == "A"
+    assert "spec_path" not in entry
+    assert entry["git_commit"]
+
+
+def test_condition_a_is_offered_by_the_cli_but_has_no_spec_runner():
+    assert "A" in runner.CONDITIONS
+    assert "A" not in runner.CONDITION_RUNNERS
 
 
 def test_spec_sections_split_composes_to_render():

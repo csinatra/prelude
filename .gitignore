@@ -23,6 +23,12 @@ results/eval_*/**/trajectory.log
 !results/corpus_export/
 results/corpus_export/*
 !results/corpus_export/manifest.json
+# Kaggle leaderboard snapshots: the reference distribution `leaderboard_percentile`
+# is computed against. Static and read-only — mle-bench ships them per competition
+# and nothing is ever submitted to Kaggle, so a run's placement is reconstructible
+# from its preserved score plus this file. Tracked because they otherwise live only
+# in the mle-bench checkout on a cloud box we destroy.
+!results/leaderboards/
 # Corpus characterization, cited by DECISIONS.md as evidence for design choices.
 # Globbed: passes are suffixed by parse model (…_haiku, …_sonnet) and the
 # unsuffixed files are the pre-expansion baseline.

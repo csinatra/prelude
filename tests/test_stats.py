@@ -71,7 +71,7 @@ def test_bootstrap_interval_degenerate_cases():
     assert stats.bootstrap_interval(deltas=[0.3]) == (0.3, 0.3)
 
 
-def test_compare_supports_h1_on_consistent_positive_effect():
+def test_compare_flags_a_positive_signal_on_consistent_positive_effect():
     runs = _grid(
         c2_values={"a": [1.0, 1.0], "b": [1.0, 1.0], "c": [1.0, 1.0]},
         b2_values={"a": [0.0, 0.0], "b": [0.0, 0.0], "c": [0.0, 0.0]},
@@ -81,20 +81,20 @@ def test_compare_supports_h1_on_consistent_positive_effect():
     assert result.mean_delta == pytest.approx(1.0)
     assert result.interval_excludes_zero
     assert result.direction_fraction == pytest.approx(1.0)
-    assert result.supports_h1
+    assert result.positive_signal
 
 
-def test_compare_rejects_h1_on_noise():
+def test_compare_reports_no_signal_on_noise():
     runs = _grid(
         c2_values={"a": [1.0], "b": [0.0], "c": [1.0], "d": [0.0]},
         b2_values={"a": [0.0], "b": [1.0], "c": [0.0], "d": [1.0]},
     )
     result = stats.compare(runs=runs, treatment="C2", baseline="B2", metric="score")
     assert result.mean_delta == pytest.approx(0.0)
-    assert not result.supports_h1
+    assert not result.positive_signal
 
 
-def test_compare_rejects_h1_when_direction_is_split_despite_positive_mean():
+def test_compare_reports_no_signal_when_direction_is_split_despite_positive_mean():
     # one huge win, three small losses: positive mean but no majority direction
     runs = _grid(
         c2_values={"a": [10.0], "b": [0.0], "c": [0.0], "d": [0.0]},
@@ -103,7 +103,59 @@ def test_compare_rejects_h1_when_direction_is_split_despite_positive_mean():
     result = stats.compare(runs=runs, treatment="C2", baseline="B2", metric="score")
     assert result.mean_delta > 0
     assert result.direction_fraction < 0.5
-    assert not result.supports_h1
+    assert not result.positive_signal
+
+
+def test_nonsubmission_is_floored_not_dropped_for_any_medal():
+    """The pre-registered rule: an agent that submitted nothing did not medal.
+
+    Dropping it instead would erase a failure from the average of whichever
+    condition caused it, which is the bias the rule exists to prevent.
+    """
+    runs = [
+        _run(comp="a", condition="C2", seed=0, status="graded", any_medal=1.0),
+        # Agent finished, grading never recorded: harness.batch raises when
+        # there is no submission, so the run holds no outcome fields.
+        _run(comp="a", condition="C2", seed=1, status="agent_run"),
+        _run(comp="a", condition="B2", seed=0, status="graded", any_medal=0.0),
+        _run(comp="a", condition="B2", seed=1, status="graded", any_medal=0.0),
+    ]
+    result = stats.compare(runs=runs, treatment="C2", baseline="B2", metric="any_medal")
+    # Floored to 0, so C2 averages 0.5 rather than the 1.0 dropping would give.
+    assert result.mean_delta == pytest.approx(0.5)
+    assert result.n_floored_treatment == 1
+    assert result.n_floored_baseline == 0
+
+
+def test_percentile_has_no_floor_because_it_is_undefined_without_a_score():
+    runs = [
+        _run(comp="a", condition="C2", seed=0, status="graded", leaderboard_percentile=0.8),
+        _run(comp="a", condition="C2", seed=1, status="agent_run"),
+        _run(comp="a", condition="B2", seed=0, status="graded", leaderboard_percentile=0.4),
+    ]
+    result = stats.compare(
+        runs=runs, treatment="C2", baseline="B2", metric="leaderboard_percentile"
+    )
+    assert result.mean_delta == pytest.approx(0.4)
+    assert result.n_floored_treatment == 0
+
+
+def test_abandoned_run_is_not_a_nonsubmission():
+    """A parked run is not evidence about its condition, so it must not score 0."""
+    parked = _run(comp="a", condition="C2", seed=0, status="agent_run", abandoned=True)
+    assert not stats.is_nonsubmission(run=parked)
+
+
+def test_direction_summary_applies_the_same_floor_as_the_deltas():
+    """Both statistics read metrics through one seam, so they cannot disagree."""
+    runs = [
+        _run(comp="a", condition="C2", seed=0, status="agent_run"),
+        _run(comp="a", condition="B2", seed=0, status="graded", any_medal=1.0),
+    ]
+    # The floored C2 run loses to B2's medal; dropping it would leave no pairs.
+    assert stats.direction_fraction(
+        runs=runs, treatment="C2", baseline="B2", metric="any_medal"
+    ) == pytest.approx(0.0)
 
 
 def test_format_result_is_one_line():

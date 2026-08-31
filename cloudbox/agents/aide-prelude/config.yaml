@@ -24,9 +24,23 @@
 # RESEARCH_DESIGN.md. Rationale + the Sonnet-5-thinking-off adapter as a
 # future capability-sweep lever are recorded there and in DECISIONS.md.
 
+# Budget. MLE-bench's reference is 500 steps / 24h; this is the CALIBRATION
+# setting, deliberately below it so one run fits a working day. The eval budget
+# is pinned from what this run's convergence curve shows (RESEARCH_DESIGN.md H3)
+# and is not yet decided. Steps stay at the reference so they do not bind:
+# calibration wants the natural curve, with time as the wall.
+# One value drives both the hard stop and what the agent is told, as upstream
+# has it. `timeout $TIME_LIMIT_SECS` in start.sh is the only enforcement:
+# aideml's search loop is `while global_step < cfg.agent.steps` with no time
+# check, and upstream's config calls time_limit "purely informational". It still
+# reaches the model as <TOTAL_TIME_REMAINING> and caps the per-step budget it is
+# told to fit, so it is a pacing signal — kept equal to the real wall so the
+# agent paces against its actual budget rather than a second, stricter one it
+# would compound with its own margin. A kill mid-step costs one step: `save_run`
+# writes the journal after every completed step.
 vars:
   step_count: &step_count 500
-  time_limit: &time_limit 86400 # 24 hrs
+  time_limit: &time_limit 43200 # 12 hrs
 
 defaults: &defaults
   start: aide-prelude/start.sh

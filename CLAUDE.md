@@ -225,7 +225,11 @@ ingest/                # offline corpus build — never imported by eval-time pi
 
 analysis/              # post-run mechanistic analysis (scaffold until runs exist)
 ├── judge.py           # per-flag judging vs docs/JUDGE_RUBRIC.md + per-category aggregation
-└── artifacts.py       # results/{comp}_{condition}_{seed}/ preservation layout
+├── judge_run.py        # run dir → judgments.json; builds the evidence bundle BOTH raters
+│                        #   see (parity is the point — see docs/JUDGE_VALIDATION.md)
+├── judge_agreement.py   # stratified blinded sample + kappa vs the human anchor
+├── judge_review_page.py  # the blinded HTML review artifact the human labels in
+└── artifacts.py           # results/{stage}/{run_key}/ preservation layout
 
 docs/                  # RESEARCH_DESIGN.md, JUDGE_RUBRIC.md (FROZEN), COST_ESTIMATE.md,
                        #   RUNBOOK.md, PROGRESS.md (milestone history), DECISIONS.md (audit trail)

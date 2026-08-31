@@ -1,19 +1,19 @@
 # Cost / Scope Tracking
 
 Update this file whenever conditions, competition count, or seed count change.
-Last updated: 2026-08-11 (measured per-notebook batch rate;
-superseded code-chunk-era notes collapsed into History). No eval runs yet.
+Last updated: 2026-08-25 (Condition A promoted to a primary arm; agent-side
+token cost split out). No eval runs yet.
 
 ## Run matrix (POC scope — decided 2026-07-22)
 
 | Condition | Competitions | Seeds | Agent runs |
 |---|---|---|---|
-| A | contingent matched anchor (see RESEARCH_DESIGN) | — | 0 unless triggered |
+| A | 3–5 | 3 | 9–15 |
 | B1 | 3–5 | 3 | 9–15 |
 | B2 | 3–5 | 3 | 9–15 |
 | C1 (pilot) | 3 | 1 | 3 |
 | C2 | 3–5 | 3 | 9–15 |
-| **Total** | | | **~30–48** |
+| **Total** | | | **~39–63** |
 
 Scope is bounded by budget, not by a judgment that this n is scientifically
 correct (RESEARCH_DESIGN.md, Roadmap). Full Lite-22 (~94 runs) is the v1.5 plan
@@ -21,12 +21,18 @@ if an initial result is pursued.
 
 ## Cost estimate
 
-- **GPU compute (dominant):** ~30–48 runs × Lambda A10 (~\$1.29/hr) at MLE-bench
-  Lite runtimes, with a reduced per-run step/time cap set from smoke timings
-  (TBD) → **low hundreds of dollars**
+- **GPU compute (dominant):** ~39–63 runs × Lambda A10 (~\$1.29/hr) at MLE-bench
+  Lite runtimes, with a reduced per-run step/time cap set from calibration
+  timings (TBD) → **low hundreds of dollars**. Serial runtime, not just cost, is
+  a scoping constraint at this run count — see RESEARCH_DESIGN's budget note.
 - **API (spec pipeline + judge):** B2/C1/C2 synthesis, C2's four structured
   stages, and judge passes. Sonnet for eval, Haiku elsewhere. Spec builds scale
-  with competition × condition, not with seeds → **~\$15–50** at POC scope
+  with competition × spec-bearing condition, not with seeds — A mounts no spec
+  and so costs no pipeline call → **~\$15–50** at POC scope
+- **Agent-side tokens:** every run's AIDE calls, which the registry now records
+  per run. Not yet estimated at eval budget; the calibration run measures it,
+  and at ~100 steps it is plausibly the same order as GPU rather than a rounding
+  error (a factor in whether prompt caching is worth its complexity).
 - **Embeddings:** `voyage-4-large` at \$0.12/M with its own **200M free** grant.
   Re-embedding the dev corpus is a few M tokens and eval runs cost only query
   embeddings → **~\$0**. The voyage-4 family shares one embedding space, so the
@@ -34,9 +40,6 @@ if an initial result is pursued.
   demands it.
 - **Judge validation:** human labeling of a 20–30 item sample → **\$0**, review
   time only (docs/JUDGE_VALIDATION.md)
-- **Contingent matched-A arm:** triggers per the RESEARCH_DESIGN Condition A
-  note → **+GPU for one run per eval competition if triggered**. The small
-  matched-A anchor comes free from registered smoke runs either way.
 
 ## One-time / infrastructure
 
