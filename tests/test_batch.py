@@ -13,8 +13,15 @@ from harness import advance, batch, registry
 @pytest.fixture
 def seeded_registry(tmp_path, monkeypatch):
     """Runs across two competitions, appended out of order: one graded (done),
-    the rest pending, so ordering (by competition) is observable."""
+    the rest pending, so ordering (by competition) is observable.
+
+    Returns a data dir with both competitions prepared, since run_batch now
+    refuses to drain without that (see unprepared_competitions).
+    """
     monkeypatch.setattr(registry, "RESULTS_DIR", tmp_path)
+    data_dir = tmp_path / "data"
+    for competition in ("comp", "alpha"):
+        (data_dir / competition / "prepared").mkdir(parents=True)
     registry.append_run(entry={
         "run_key": "comp_C2_0", "competition_id": "comp", "condition": "C2",
         "seed": 0, "status": "graded", "score": 0.9,
@@ -31,6 +38,23 @@ def seeded_registry(tmp_path, monkeypatch):
         "run_key": "comp_A_0", "competition_id": "comp", "condition": "A",
         "seed": 0, "status": "registered",
     })
+    return data_dir
+
+
+def test_drain_refuses_to_start_when_a_competition_is_not_prepared(seeded_registry):
+    """Kaggle rules acceptance is browser-only, so an unjoined competition can
+    never be prepared. Both causes look the same here, and without this check
+    both surface hours into a drain as a parked run."""
+    (seeded_registry / "alpha" / "prepared").rmdir()
+    ran = []
+    with pytest.raises(SystemExit) as excinfo:
+        batch.run_batch(
+            data_dir=seeded_registry,
+            execute=lambda *, run, data_dir: ran.append(run["run_key"]),
+        )
+    assert "alpha" in str(excinfo.value)
+    assert "comp" not in str(excinfo.value).split("prepared data for:")[1].split("\n")[0]
+    assert ran == []  # refuses before spending any GPU time
 
 
 def test_pending_excludes_graded_and_groups_by_competition(seeded_registry):
@@ -42,7 +66,7 @@ def test_pending_excludes_graded_and_groups_by_competition(seeded_registry):
 def test_run_batch_executes_each_pending_in_order(seeded_registry):
     seen = []
     batch.run_batch(
-        data_dir=Path("/data"),
+        data_dir=seeded_registry,
         execute=lambda *, run, data_dir: seen.append(run["run_key"]),
     )
     assert seen == ["alpha_B1_0", "comp_A_0", "comp_B2_0"]
@@ -53,7 +77,7 @@ def test_one_failure_does_not_stall_the_batch(seeded_registry):
         if run["run_key"] == "comp_A_0":
             raise RuntimeError("agent crashed")
 
-    summary = batch.run_batch(data_dir=Path("/data"), execute=execute)
+    summary = batch.run_batch(data_dir=seeded_registry, execute=execute)
     assert summary["abandoned"] == ["comp_A_0"]
     assert summary["succeeded"] == ["alpha_B1_0", "comp_B2_0"]  # runs before and after still ran
 
@@ -63,7 +87,7 @@ def test_failure_parks_run_and_excludes_it_from_next_batch(seeded_registry):
         if run["run_key"] == "comp_A_0":
             raise RuntimeError("boom")
 
-    batch.run_batch(data_dir=Path("/data"), execute=execute)
+    batch.run_batch(data_dir=seeded_registry, execute=execute)
 
     parked = registry.load_runs()["comp_A_0"]
     assert parked["abandoned"] is True
@@ -81,10 +105,10 @@ def test_retry_abandoned_requeues_parked_runs(seeded_registry):
         if run["run_key"] == "comp_A_0" and attempts.count("comp_A_0") == 1:
             raise RuntimeError("transient")
 
-    batch.run_batch(data_dir=Path("/data"), execute=execute)  # comp_A_0 parked
+    batch.run_batch(data_dir=seeded_registry, execute=execute)  # comp_A_0 parked
     assert "comp_A_0" not in [run["run_key"] for run in batch.pending_runs()]
 
-    summary = batch.run_batch(data_dir=Path("/data"), execute=execute, retry_abandoned=True)
+    summary = batch.run_batch(data_dir=seeded_registry, execute=execute, retry_abandoned=True)
     assert "comp_A_0" in summary["succeeded"]  # re-queued and succeeded on 2nd attempt
     assert registry.load_runs()["comp_A_0"]["abandoned"] is False
 
@@ -97,7 +121,7 @@ def test_terminate_on_done_fires_once_when_flagged(seeded_registry, monkeypatch)
         lambda *, instance_id: calls.append(instance_id),
     )
     batch.run_batch(
-        data_dir=Path("/data"), execute=lambda *, run, data_dir: None,
+        data_dir=seeded_registry, execute=lambda *, run, data_dir: None,
         terminate_on_done=True, instance_id="i-123",
     )
     assert calls == ["i-123"]
@@ -109,14 +133,14 @@ def test_no_terminate_without_flag(seeded_registry, monkeypatch):
         batch.lambda_ctl, "terminate_instance",
         lambda *, instance_id: calls.append(instance_id),
     )
-    batch.run_batch(data_dir=Path("/data"), execute=lambda *, run, data_dir: None)
+    batch.run_batch(data_dir=seeded_registry, execute=lambda *, run, data_dir: None)
     assert calls == []
 
 
 def test_terminate_requires_instance_id(seeded_registry):
     with pytest.raises(SystemExit, match="instance-id"):
         batch.run_batch(
-            data_dir=Path("/data"), execute=lambda *, run, data_dir: None,
+            data_dir=seeded_registry, execute=lambda *, run, data_dir: None,
             terminate_on_done=True, instance_id=None,
         )
 
@@ -135,7 +159,7 @@ def test_execute_run_advances_spec_built_through_graded(seeded_registry, monkeyp
     ))
     monkeypatch.setattr(batch, "_grade", lambda **kw: report)
 
-    batch.execute_run(run=batch.load_runs()["comp_B2_0"], data_dir=Path("/data"))
+    batch.execute_run(run=batch.load_runs()["comp_B2_0"], data_dir=seeded_registry)
 
     run = registry.load_runs()["comp_B2_0"]
     assert run["status"] == "graded"
@@ -158,7 +182,7 @@ def test_execute_run_condition_a_runs_agent_without_spec(seeded_registry, monkey
     monkeypatch.setattr(batch, "_run_agent", fake_agent)
     monkeypatch.setattr(batch, "_grade", lambda **kw: report)
 
-    batch.execute_run(run=batch.load_runs()["comp_A_0"], data_dir=Path("/data"))
+    batch.execute_run(run=batch.load_runs()["comp_A_0"], data_dir=seeded_registry)
 
     assert seen_spec["spec_path"] is None  # Condition A: no spec mounted
     assert registry.load_runs()["comp_A_0"]["status"] == "graded"
@@ -179,7 +203,7 @@ def test_run_agent_sets_spec_env_for_bc(monkeypatch, tmp_path):
 
     batch._run_agent(
         run={"run_key": "comp_C2_0", "competition_id": "comp", "spec_path": str(spec)},
-        data_dir=Path("/data"),
+        data_dir=seeded_registry,
     )
     assert captured["env"]["PRELUDE_SPEC_PATH"] == str(spec.resolve())  # B/C: spec mounted
     assert "--competition-set" in captured["argv"]  # file, not --competition
@@ -202,7 +226,7 @@ def test_run_agent_uses_mlebenchs_own_interpreter(monkeypatch, tmp_path):
 
     batch._run_agent(
         run={"run_key": "comp_A_0", "competition_id": "comp"},
-        data_dir=Path("/data"),
+        data_dir=seeded_registry,
     )
     assert captured["argv"][0] == str(tmp_path / ".venv" / "bin" / "python")
     assert "--container-config" in captured["argv"]  # benchmark resources, not Docker defaults
@@ -261,7 +285,7 @@ def test_execute_run_preserves_agent_artifacts_to_volume(seeded_registry, monkey
     ))
     monkeypatch.setattr(batch, "_grade", lambda **kw: report)
 
-    batch.execute_run(run=batch.load_runs()["comp_B2_0"], data_dir=Path("/data"))
+    batch.execute_run(run=batch.load_runs()["comp_B2_0"], data_dir=seeded_registry)
 
     # staged: agent outputs must land in the SAME stage tree the registry row
     # points at, or spec_path and the preserved journal would disagree
@@ -280,7 +304,7 @@ def test_run_agent_no_spec_env_for_a(monkeypatch, tmp_path):
     monkeypatch.setattr(batch, "_locate_run_group", lambda *, started_at: tmp_path)
     monkeypatch.setattr(batch, "_locate_outputs", lambda *, run_output_dir: (None, None, None, None))
 
-    batch._run_agent(run={"run_key": "comp_A_0", "competition_id": "comp"}, data_dir=Path("/data"))
+    batch._run_agent(run={"run_key": "comp_A_0", "competition_id": "comp"}, data_dir=seeded_registry)
     assert "PRELUDE_SPEC_PATH" not in captured["env"]  # Condition A: unset -> stock aide
 
 
@@ -290,7 +314,7 @@ def test_run_agent_missing_spec_raises(monkeypatch, tmp_path):
         batch._run_agent(
             run={"run_key": "comp_B2_0", "competition_id": "comp",
                  "spec_path": str(tmp_path / "missing.md")},
-            data_dir=Path("/data"),
+            data_dir=seeded_registry,
         )
 
 
@@ -306,7 +330,7 @@ def test_submissionless_run_stays_retryable(seeded_registry, monkeypatch, tmp_pa
 
     with pytest.raises(RuntimeError, match="no submission"):
         batch.execute_run(run={"run_key": "comp_B2_0", "competition_id": "comp",
-                               "status": "spec_built"}, data_dir=Path("/data"))
+                               "status": "spec_built"}, data_dir=seeded_registry)
 
     assert registry.load_runs()["comp_B2_0"].get("status") != "agent_run"
 
@@ -324,7 +348,7 @@ def test_grading_report_is_preserved_to_the_volume(seeded_registry, monkeypatch,
         submission_path=str(submission), journal_path=None, metrics={}))
     monkeypatch.setattr(batch, "_grade", lambda **kw: report)
 
-    batch.execute_run(run=batch.load_runs()["comp_B2_0"], data_dir=Path("/data"))
+    batch.execute_run(run=batch.load_runs()["comp_B2_0"], data_dir=seeded_registry)
 
     preserved = batch.artifacts.run_root() / "comp_B2_0" / "grading_report.json"
     assert preserved.is_file()
@@ -344,7 +368,7 @@ def test_terminate_refuses_when_results_are_on_the_boot_disk(seeded_registry, mo
         lambda *, instance_id: calls.append(instance_id),
     )
     batch.run_batch(
-        data_dir=Path("/data"), execute=lambda *, run, data_dir: None,
+        data_dir=seeded_registry, execute=lambda *, run, data_dir: None,
         terminate_on_done=True, instance_id="i-123",
     )
     assert calls == []  # box left running; results recoverable
@@ -382,7 +406,7 @@ def test_spec_resolves_against_this_machines_results_root(monkeypatch, tmp_path)
     batch._run_agent(
         run={"run_key": "comp_C2_0", "competition_id": "comp",
              "spec_path": "results/dev/comp_C2_0/spec.md"},  # the dev machine's path
-        data_dir=Path("/data"),
+        data_dir=seeded_registry,
     )
     assert captured["env"]["PRELUDE_SPEC_PATH"] == str(spec.resolve())
 

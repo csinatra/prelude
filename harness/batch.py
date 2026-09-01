@@ -104,6 +104,24 @@ def pending_runs() -> list[dict]:
     )
 
 
+def unprepared_competitions(*, runs: list[dict], data_dir: Path) -> list[str]:
+    """Queued competitions whose prepared data is not on the volume.
+
+    `mlebench prepare` writes `<data_dir>/<competition>/prepared/`, and it cannot
+    succeed until the Kaggle account has accepted that competition's rules in a
+    browser — there is no API for that, so it is a manual per-competition step
+    (docs/RUNBOOK.md). Unjoined and simply-unprepared therefore look identical
+    here, and both surface the same way without this check: hours into a drain, as
+    a run that fails at launch and is parked. One stat call per competition buys
+    the difference between a checkbox and a wasted queue.
+    """
+    ready = {
+        run["competition_id"]: (data_dir / run["competition_id"] / "prepared").is_dir()
+        for run in runs
+    }
+    return sorted(competition for competition, prepared in ready.items() if not prepared)
+
+
 # ── box seams (interface confirmed on the smoke run 2026-07-23) ──────────
 
 def _run_agent(*, run: dict, data_dir: Path) -> AgentOutputs:
@@ -630,6 +648,19 @@ def run_batch(
 
     queue = pending_runs()
     logger.info("batch: %d pending run(s)", len(queue))
+
+    unprepared = unprepared_competitions(runs=queue, data_dir=data_dir)
+    if unprepared:
+        raise SystemExit(
+            "cannot drain — no prepared data for: "
+            + ", ".join(unprepared)
+            + "\n  Join each on kaggle.com first (rules acceptance is browser-only,"
+            " there is no API for it), then:\n"
+            + "\n".join(
+                f"    mlebench prepare -c {competition} --data-dir {data_dir}"
+                for competition in unprepared
+            )
+        )
     succeeded: list[str] = []
     abandoned: list[str] = []
 

@@ -100,6 +100,16 @@ cd ~/work/prelude && .venv/bin/python -c \
   "from harness import registry; print(registry.active_stage(), registry.results_root())"
 ```
 
+**Join every competition on kaggle.com first.** `mlebench prepare` downloads
+through the Kaggle API, which refuses competition data until the account has
+accepted that competition's rules in the browser. There is no API call for it and
+no way to batch it, so it is a manual, per-competition prerequisite that gates
+the whole pipeline: an unjoined competition fails at prepare, before any run
+starts. Do the full set for a pinned eval subset in one sitting rather than
+discovering it one competition at a time during a drain. The token must also be
+the **legacy** format (kaggle.com > Settings > API); newer tokens 401 against the
+pinned client.
+
 Then prepare each competition onto the persistent volume (one-time per
 competition):
 
