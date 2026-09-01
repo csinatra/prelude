@@ -76,13 +76,32 @@ a clear message if you still need `sudo usermod -aG docker $USER` + re-login),
 runtime**, the mle-bench clone at the pinned commit installed in a 3.11 venv,
 **copies** `cloudbox/agents/aide-prelude` into mle-bench's agents dir (a
 symlink is invisible to mle-bench's glob-based registry on Python <3.13), and
-builds the **base `mlebench-env`** (loading `$MLEBENCH_DATA_DIR/mlebench-env.tar.gz`
-if you saved one, else building with heavy deps off) and the **`aide-prelude`
-agent** images. It also symlinks `results/` onto the persistent volume
-(`$MLEBENCH_DATA_DIR/prelude-results`) so the registry, artifacts, and failure
-logs survive instance termination — without this, `--terminate-on-done` would
-destroy the run state it just produced. Then prepare each competition onto the
-persistent volume (one-time per competition):
+builds the **base `mlebench-env`** and the **`aide-prelude` agent** images.
+
+The base image is built with **heavy dependencies on**, matching mle-bench's own
+Dockerfile default. This is not optional: AIDE's environment prompt tells the
+agent every package is already installed and names `xgboost`, `torch-geometric`,
+`timm` and `statsmodels`, and a lean image carries only `timm`. TensorFlow and
+torch coexist on the GPU, verified on an A10. A saved
+`$MLEBENCH_DATA_DIR/mlebench-env.tar.gz` is loaded in preference to building, and
+is checked for the heavy stack before being trusted — a tarball without it is
+discarded and rebuilt, so the box cannot silently disagree with what the script
+reports building.
+
+**Set `PRELUDE_RESULTS_DIR` before running anything.** The script creates
+`$MLEBENCH_DATA_DIR/prelude-results` and prints the line to add, but does not
+write it for you, and nothing fails loudly if it is missing: runs simply write to
+the boot disk, which a terminated instance takes with it. Put the box's `.env` at
+`~/work/prelude/.env` — not only in the shell used for provisioning, since the
+batch driver reads the file — then confirm both settings resolve:
+
+```bash
+cd ~/work/prelude && .venv/bin/python -c \
+  "from harness import registry; print(registry.active_stage(), registry.results_root())"
+```
+
+Then prepare each competition onto the persistent volume (one-time per
+competition):
 
 ```bash
 cd ~/work/mle-bench
@@ -199,10 +218,11 @@ re-queue explicitly:
 python -m harness.batch --data-dir $MLEBENCH_DATA_DIR --retry-abandoned
 ```
 
-**Reviewing results and the terminate tradeoff.** `results/` is symlinked onto
-the persistent filesystem, so terminating never loses run state — but a Lambda
-filesystem is only reachable through a *running* instance it's attached to (no
-standalone mount; VS Code Remote-SSH needs a live box). Two patterns:
+**Reviewing results and the terminate tradeoff.** Run outputs go to
+`PRELUDE_RESULTS_DIR` on the persistent filesystem, so terminating never loses
+run state — but a Lambda filesystem is only reachable through a *running*
+instance it's attached to (no standalone mount; VS Code Remote-SSH needs a live
+box). Two patterns:
 
 - *Attended (smoke + early grid):* run **without** `--terminate-on-done`. The
   box stays up after draining; review over SSH/VS Code, `rsync` results to the

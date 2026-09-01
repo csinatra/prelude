@@ -7,8 +7,8 @@
 #      container runtime. cloudbox/container_config.json requests a GPU on the
 #      assumption that it can.
 #   2. Do the host's resources match what container_config.json pins?
-#   3. Why does the heavy-deps base image fail to build? Split into steps so the
-#      failure names a culprit instead of one opaque layer.
+#   3. Does the heavy-deps base image build? Split into steps so a failure names
+#      a culprit instead of one opaque layer.
 #
 # Usage: scripts/check_cloudbox.sh [--build]
 set -uo pipefail

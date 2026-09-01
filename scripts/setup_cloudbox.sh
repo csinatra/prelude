@@ -36,7 +36,9 @@
 #   KAGGLE_USERNAME / KAGGLE_KEY — mlebench prepare downloads (legacy token)
 #   MLEBENCH_DATA_DIR   — persistent volume mount point for prepared data
 # Optional env:
-#   INSTALL_HEAVY_DEPENDENCIES=true — build the full tf/torch base env (see above)
+#   INSTALL_HEAVY_DEPENDENCIES=false — skip the full tf/torch base env. Only for
+#     a throwaway wiring check: it leaves AIDE's prompt claiming packages that
+#     are not there (see above), so it is not valid for a run that produces data.
 set -euo pipefail
 
 MLEBENCH_COMMIT="507f92e1138bb6e40dac5c6ee7a6758e6424bf97" # pinned; aide-prelude forked at this commit
