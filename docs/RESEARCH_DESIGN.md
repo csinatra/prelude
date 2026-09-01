@@ -990,6 +990,29 @@ a measure.
   Not addressable at POC scale — deliberately varying the summarizer would
   manufacture artificial variance and introduce a generation confound, not
   reproduce real heterogeneity.
+- **Framework skew between corpus and scaffold (structural, conservative).**
+  The corpus and the agent prefer different deep-learning stacks. Among summaries
+  naming any framework roughly 77% are TensorFlow or Keras (3,635 against 1,052
+  for torch, over 25,633 summaries), because Code4ML is weighted toward 2016-2021
+  Kaggle, when Keras dominated exactly the vision competitions Lite-22 is full
+  of. AIDE's environment prompt says the opposite, that "for neural networks we
+  suggest using PyTorch rather than TensorFlow". That line is upstream aideml's,
+  present in both WecoAI's original and mle-bench's designated fork, so it is a
+  property of the scaffold under test rather than anything introduced here.
+
+  Left in place deliberately. Editing an agent's prompt so that it prefers the
+  framework this corpus happens to favor would tune the scaffold toward the
+  treatment, and would cost the claim that this is stock aide plus two
+  non-algorithmic fixes. Direction of bias is toward the null: retrieved advice
+  is disproportionately expressed in a framework the agent is nudged away from,
+  so retrieval-bearing conditions are if anything handicapped against Condition
+  A, which reasons from no retrieved advice at all. It bears on how *actionable*
+  retrieved knowledge is rather than on the C2-vs-B2 contrast, since every
+  retrieval condition draws on the same corpus and meets the same prompt.
+
+  What it does require is that the nudge stay a preference rather than becoming a
+  wall. Both frameworks are installed and both reach the GPU (verified on an
+  A10), so an agent following Keras-shaped advice can execute it.
 - **POC scale (consolidated, NOT structural).** Several limitations follow from
   running small. They are collected here rather than scattered across the
   document. None is a flaw in the design, and unlike the structural limits above,
