@@ -13,7 +13,15 @@ filesystem level rather than by a field or a convention.
 | stage | registry | artifacts | published |
 |---|---|---|---|
 | `dev` (default) | `results/runs_dev.jsonl` | `results/dev/{run_key}/` | no |
+| `calibration` | `results/runs_calibration.jsonl` | `results/calibration/{run_key}/` | yes |
 | `eval_v1` | `results/runs_eval_v1.jsonl` | `results/eval_v1/{run_key}/` | yes |
+
+`calibration` is separate from both neighbours on purpose. It cannot share
+`eval_v1`, since the development holdout forbids pooling a competition used to
+tune anything with eval results (RESEARCH_DESIGN.md, experimental design
+controls). It is not `dev` either, because unlike the integration runs there it
+produces a result the writeup relies on: the agent step budget is pinned from
+its convergence curve, so it is preserved and cited rather than discarded.
 
 The active stage comes from `PRELUDE_REGISTRY_STAGE`, defaulting to `dev`, so
 writing into an eval registry has to be asked for explicitly:
