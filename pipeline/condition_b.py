@@ -28,7 +28,7 @@ from pipeline.config import (
     METADATA_K,
     NOTEBOOK_SUMMARIES,
 )
-from pipeline.llm_client import call_llm_text
+from pipeline.llm_client import SYNTHESIS_MAX_TOKENS, call_llm_text
 from pipeline.nodes import _format_docs
 from pipeline.retriever import RetrievedDoc, retrieve
 
@@ -83,7 +83,7 @@ def run_b2(*, raw_problem: str, competition_id: str) -> dict:
             f"Problem description:\n{raw_problem}\n\n"
             f"Reference material from similar problems:\n{context_block}"
         ),
-        max_tokens=4096,
+        max_tokens=SYNTHESIS_MAX_TOKENS,
     )
     return {
         "condition": "B2",

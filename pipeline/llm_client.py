@@ -85,8 +85,29 @@ def _record_llm_trace_metadata(*, provider: str, model: str, input_tokens: int, 
     )
 
 
+# Output caps are runaway guards, sized not to bind. A cap that binds truncates,
+# and a truncated stage is a broken output rather than a smaller one — it is a
+# measurement artifact in whichever condition happens to hit it first.
+#
+# This is NOT the budget confound. Whether C2's larger total generation budget is
+# itself doing the work is a live question, and it is answered by the v1.5 stage
+# ablations (RESEARCH_DESIGN.md roadmap), not by tuning these numbers. Per-call
+# usage is recorded in llm_usage.json either way.
+# Sized against sample VARIANCE, not against a typical response. The flag stage
+# emitted 1,466 tokens on one sample of a problem and 5,008 on another (Haiku vs
+# Sonnet, uw-madison, 2026-09-01), so a cap set at ~2x the observed mean still
+# binds on a bad draw. Headroom here exceeds that ~3.4x spread on the hardest
+# problem measured. Ceilings cost nothing when unused; a bound one parks a run.
+DEFAULT_MAX_TOKENS = 8192
+SYNTHESIS_MAX_TOKENS = 16384
+
+
 @traceable(run_type="llm")
-def call_llm(*, system: str, user: str, response_model: type[ModelT], max_tokens: int = 1024) -> ModelT:
+
+
+def call_llm(
+    *, system: str, user: str, response_model: type[ModelT], max_tokens: int = DEFAULT_MAX_TOKENS
+) -> ModelT:
     """Call the configured backend, constrained to response_model. Returns a validated instance."""
     if LLM_PROVIDER == "ollama":
         return _call_ollama(system=system, user=user, response_model=response_model, max_tokens=max_tokens)
@@ -94,7 +115,9 @@ def call_llm(*, system: str, user: str, response_model: type[ModelT], max_tokens
 
 
 @traceable(run_type="llm")
-def call_llm_text(*, system: str, user: str, max_tokens: int = 4096, model: str | None = None) -> str:
+def call_llm_text(
+    *, system: str, user: str, max_tokens: int = SYNTHESIS_MAX_TOKENS, model: str | None = None
+) -> str:
     """Call the configured backend with no output schema. Returns raw text.
 
     Used by the B2/C1 freeform synthesis (which must be free of any imposed
@@ -131,6 +154,16 @@ def call_llm_text(*, system: str, user: str, max_tokens: int = 4096, model: str 
         system=system,
         messages=[{"role": "user", "content": user}],
     )
+    # Freeform truncation is SILENT without this: no schema means nothing fails
+    # to parse, so a capped B2/C1 synthesis would ship as a spec that stops
+    # mid-sentence. Since the structured path raises on the same condition, the
+    # asymmetry would land as a quiet handicap on the control arm — and it would
+    # bite hardest on the complex problems, where C2 has the most to gain.
+    if response.stop_reason == "max_tokens":
+        raise RuntimeError(
+            f"freeform response hit max_tokens={max_tokens} and was truncated; "
+            "raise the caller's max_tokens for this stage"
+        )
     _record_llm_trace_metadata(
         provider="anthropic",
         model=resolved_model,
@@ -149,6 +182,16 @@ def _call_anthropic(*, system: str, user: str, response_model: type[ModelT], max
         messages=[{"role": "user", "content": user}],
         output_format=response_model,
     )
+    # Say what actually went wrong. A response cut off at the cap is still valid
+    # JSON-so-far, so pydantic reports "EOF while parsing a string" from deep in
+    # the SDK — which reads like a malformed schema rather than a budget that was
+    # too small for this problem. Checked before .parsed_output, which is what
+    # raises.
+    if response.stop_reason == "max_tokens":
+        raise RuntimeError(
+            f"{response_model.__name__} response hit max_tokens={max_tokens} and was "
+            "truncated; raise the caller's max_tokens for this stage"
+        )
     _record_llm_trace_metadata(
         provider="anthropic",
         model=model,

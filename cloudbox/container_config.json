@@ -3,6 +3,7 @@
     "shm_size": "4G",
     "nano_cpus": 30000000000,
     "runtime": "runc",
+    "cap_add": ["SYS_PTRACE"],
     "device_requests": [
         {
             "Driver": "nvidia",

@@ -4,7 +4,7 @@ from pipeline.config import (
     RETRIEVAL_K,
     STAGE_N_NOTEBOOKS,
 )
-from pipeline.llm_client import call_llm
+from pipeline.llm_client import SYNTHESIS_MAX_TOKENS, call_llm
 from pipeline.retriever import RetrievedDoc, retrieve, retrieve_with_topup
 from pipeline.schemas import Advice, AssumptionFlags, ParsedProblem, SurfacedSignals
 from pipeline.state import PipelineState
@@ -174,7 +174,11 @@ def flag_assumptions(state: PipelineState) -> dict:
             f"Reference notebooks from similar problems:\n{_format_docs(docs)}"
         ),
         response_model=AssumptionFlags,
-        max_tokens=2048,
+        # 2048 truncated on the first complex vision problem tried (uw-madison
+        # segmentation, 2026-09-01). Flags carry evidence citations and
+        # rationale, so output scales with how much there is to flag, and
+        # Lite-22's simpler problems never reached the cap.
+        max_tokens=SYNTHESIS_MAX_TOKENS,
     )
     # flag_ids assigned here, not by the LLM — stable join keys for
     # Recommendation.addresses_flags and downstream analysis.
@@ -229,7 +233,7 @@ def advise_approach(state: PipelineState) -> dict:
             f"Reference notebooks from similar problems:\n{_format_docs(docs)}"
         ),
         response_model=Advice,
-        max_tokens=4096,
+        max_tokens=SYNTHESIS_MAX_TOKENS,
     )
     return {
         "recommendations": [rec.model_dump() for rec in parsed.recommendations],

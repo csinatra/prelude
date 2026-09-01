@@ -1,7 +1,7 @@
 # PATCHED COPY of aideml v6.3.3 `aide/backend/backend_anthropic.py`
 # (github.com/thesofakillers/aideml @ v6.3.3, MIT — see ACKNOWLEDGMENTS.md).
 #
-# Two changes vs upstream, neither of which alters AIDE's search/coding
+# Three changes vs upstream, none of which alters AIDE's search/coding
 # algorithm; the Dockerfile overlays this file onto the pip-installed aideml.
 #
 # (1) The `func_spec` path (resolved on-box 2026-07-23). Upstream leaves it as
@@ -20,6 +20,20 @@
 #     Best-effort and identical across all conditions: it only READS usage the
 #     SDK already returns and appends to a file — it never changes what query()
 #     returns or how AIDE behaves, and a logging failure is swallowed.
+#
+# (3) Output cap raised from upstream's 4096 (measured on-box 2026-09-01). Same
+#     category as the httpx pin in requirements.txt: API drift, not a design
+#     choice. 4096 was Claude 3's hard output ceiling when aideml was written;
+#     current models allow far more, so the constant silently became a budget.
+#     It was truncating 16 of 28 agent calls on a segmentation task, and the
+#     failure is invisible rather than loud: a response cut mid-code-block never
+#     emits its closing fence, so aideml's extract_code finds nothing valid,
+#     plan_and_code_query burns all 3 retries, and its fallback returns the raw
+#     truncated text AS THE CODE — which then fails with a SyntaxError that
+#     looks like the model cannot write Python. Half the step budget was lost
+#     that way. It affects every condition (Condition A truncated 2 of 3 calls
+#     with no spec at all), so it is a scaffold bug rather than a treatment
+#     effect, and leaving it would put extraction luck in the measurement.
 """Backend for Anthropic API."""
 
 import json
@@ -83,7 +97,10 @@ def query(
 
     filtered_kwargs: dict = select_values(notnone, model_kwargs)  # type: ignore
     if "max_tokens" not in filtered_kwargs:
-        filtered_kwargs["max_tokens"] = 4096  # default for Claude models
+        # PRELUDE PATCH (3): was 4096 upstream. See the header note — that value
+        # was Claude 3's ceiling, and it truncates real solutions into
+        # unparseable code. Sized to not bind on a full segmentation solution.
+        filtered_kwargs["max_tokens"] = 16384
 
     # ── PRELUDE PATCH: function calling via Anthropic tool use ──────────────
     # Build a single tool from the FunctionSpec and force it with tool_choice,

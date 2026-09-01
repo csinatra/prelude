@@ -68,6 +68,21 @@ nvidia-smi >/dev/null || { echo "ERROR: no NVIDIA GPU visible" >&2; exit 1; }
 docker run --rm --gpus all ubuntu:22.04 true 2>/dev/null \
   || { echo "ERROR: docker cannot access the GPU (install nvidia-container-toolkit)" >&2; exit 1; }
 
+# ── Lambda guest agent (host telemetry) ─────────────────────────────────
+# Reports GPU/VRAM utilisation to the Lambda Cloud console. That is the only
+# view of a run that OUTLIVES the box: harness.dashboard reads the same numbers
+# live but dies with the instance, and after an unattended overnight run the
+# question is usually "was the GPU ever busy?" — which a 40-minute step at 0%
+# utilisation answers very differently from a 40-minute step at 90%.
+# Monitoring only; it does not touch containers or runs. Non-fatal, since
+# telemetry is not worth failing a provision over. Self-updates fortnightly.
+#   https://docs.lambda.ai/public-cloud/guest-agent/
+if ! systemctl list-unit-files 2>/dev/null | grep -q lambda-guest-agent; then
+  curl -fsSL https://lambdalabs-guest-agent.s3.us-west-2.amazonaws.com/scripts/install.sh \
+    | sudo bash \
+    || echo "WARN: guest-agent install failed — continuing without host telemetry" >&2
+fi
+
 # ── Python 3.11 (mle-bench requires >=3.11; Lambda Stack ships 3.10) ─────
 if ! command -v "$PY" >/dev/null; then
   sudo apt-get update

@@ -18,6 +18,7 @@ Usage:
 import argparse
 import json
 import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 
@@ -130,6 +131,13 @@ if __name__ == "__main__":
     parser.add_argument("--logs", action="store_true", help="also locate the live container")
     parser.add_argument("--json", action="store_true", help="machine-readable summary")
     args = parser.parse_args()
+
+    # The in-process form of PYTHONUNBUFFERED, which cannot be set anywhere that
+    # would reach this process: the interpreter consumes it at startup, before
+    # .env is loaded, and `ssh box '...'` is non-interactive so no profile runs.
+    # Without it the intended invocation block-buffers stdout and --follow shows
+    # nothing for minutes, which is indistinguishable from a hung monitor.
+    sys.stdout.reconfigure(line_buffering=True)
 
     while True:
         state = summarize()

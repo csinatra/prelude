@@ -27,6 +27,19 @@ instance type changes.**
 Reported alongside results as deviations from the reference: fewer vCPUs and
 less RAM than the reference host, and a shorter runtime (budget-constrained).
 
+`cap_add: ["SYS_PTRACE"]` exists so `py-spy` can attach to a wedged solution. On
+2026-09-01 a step sat for 2.5 hours producing nothing, and the cause could not be
+established: ptrace was denied, and AIDE writes `journal.json` only when a step
+*ends*, so a stalled step is the one state with no artifact to inspect. The
+capability is added identically for every condition and AIDE never uses it, so it
+is a debugging affordance rather than a change to what the agent can do.
+
+**Every key in `container_config.json` is passed straight to Docker.**
+`parse_container_config` strips only `gpus` and the rest is splatted into
+`client.containers.create(**config)`, so an unrecognised key — a comment field,
+for instance — raises `TypeError` and fails every run. Document values here, not
+in the JSON.
+
 ## Why `runc` rather than mle-bench's `sysbox-runc`
 
 Upstream runs agents under Sysbox. Sysbox cannot reach a GPU on this box, and

@@ -19,7 +19,7 @@ Design notes:
 
 from pipeline.condition_b import FREEFORM_SYSTEM
 from pipeline.config import NOTEBOOK_SUMMARIES, STAGE_N_NOTEBOOKS
-from pipeline.llm_client import call_llm_text
+from pipeline.llm_client import SYNTHESIS_MAX_TOKENS, call_llm_text
 from pipeline.nodes import (
     _format_docs,
     advise_query,
@@ -74,7 +74,7 @@ def run_c1(*, raw_problem: str, competition_id: str) -> dict:
             f"Problem description:\n{raw_problem}\n\n"
             f"Reference material from similar problems:\n{context_block}"
         ),
-        max_tokens=4096,
+        max_tokens=SYNTHESIS_MAX_TOKENS,
     )
     return {
         "condition": "C1",
