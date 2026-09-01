@@ -28,6 +28,12 @@ def terminate_instance(*, instance_id: str, api_key: str | None = None) -> dict:
     request = urllib.request.Request(url=TERMINATE_URL, data=body, method="POST")
     request.add_header("Authorization", f"Bearer {key}")
     request.add_header("Content-Type", "application/json")
+    # Cloudflare fronts the API and bans urllib's default User-Agent by
+    # signature, returning error 1010 as a bare HTTP 403. That is
+    # indistinguishable from an auth failure from the client side, and it cost a
+    # day chasing API keys and account status: the same request via curl
+    # succeeds, and only the User-Agent differs. Any non-default value passes.
+    request.add_header("User-Agent", "prelude-harness/1.0")
     try:
         with urllib.request.urlopen(request) as response:  # noqa: S310 (fixed https URL)
             return json.loads(response.read())
