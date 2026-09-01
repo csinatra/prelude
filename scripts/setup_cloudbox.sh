@@ -19,9 +19,15 @@
 #     (kaggle.com > Settings > API); newer tokens 401.
 #   - git-lfs: mle-bench's leaderboards are LFS objects; without a pull they're
 #     pointer files and grading's medal-ranking fails on every competition.
-#   - The base image's heavy-deps stack (tensorflow/torch) fails to build; the
-#     smoke + Lite runs don't need it, so it's off by default here. Real eval
-#     runs that need it must first resolve the heavy-deps build ([confirm]).
+#   - The base image's heavy-deps stack (tensorflow/torch) is ON, matching
+#     mle-bench's own Dockerfile default. It was off here while the build was
+#     believed broken; a 2026-09-01 rebuild succeeded with no package failing, so
+#     that block is resolved. It is not optional for eval runs: AIDE's own
+#     environment prompt tells the agent "all packages are already installed" and
+#     names xgboost, torch-geometric, timm and statsmodels, none of which a lean
+#     image carries except timm. TensorFlow and torch coexist on the GPU
+#     (verified on an A10); pip warns that TF's CUDA 12.3 wheels do not satisfy
+#     torch 2.2.0's 12.1 pins, but 12.x is forward compatible and both run.
 #   - prelude needs its OWN venv on the box (2026-08-24) — the batch driver runs
 #     from this repo, and prelude requires >=3.12 while mle-bench pins 3.11.
 #
@@ -39,7 +45,7 @@ WORK_DIR="${WORK_DIR:-$HOME/work}"
 PY="python3.11"
 SYSBOX_VERSION="0.7.0"
 SYSBOX_SHA256="eeff273671467b8fa351ab3d40709759462dc03d9f7b50a1b207b37982ce40a9"
-INSTALL_HEAVY_DEPENDENCIES="${INSTALL_HEAVY_DEPENDENCIES:-false}"
+INSTALL_HEAVY_DEPENDENCIES="${INSTALL_HEAVY_DEPENDENCIES:-true}"
 
 for var in ANTHROPIC_API_KEY KAGGLE_USERNAME KAGGLE_KEY MLEBENCH_DATA_DIR; do
   if [ -z "${!var:-}" ]; then
@@ -154,19 +160,30 @@ rm -rf agents/aide-prelude
 cp -r "$WORK_DIR/prelude/cloudbox/agents/aide-prelude" agents/aide-prelude
 
 # ── base image: mlebench-env ──────────────────────────────────────────
-# Load a saved tarball if present (skips the ~30-min build), else build. Heavy
-# deps (tensorflow/torch) are off by default — that stack currently fails to
-# build and the smoke/Lite runs don't need it (AIDE pip-installs what a solution
-# needs at runtime inside its container).
+# Load a saved tarball if present (skips the ~30-min build), else build.
+#
+# The saved tarball is checked against the heavy-deps setting rather than
+# trusted. A tarball predating the 2026-09-01 switch carries a LEAN image, and
+# loading it silently produces a box that disagrees with what this script says
+# it built — the failure mode that hid a missing tensorflow/xgboost for weeks.
+# Since the image is a frozen input to the eval (RESEARCH_DESIGN.md missing-data
+# rule), a stale one has to be discarded, not inherited.
 if ! docker image inspect mlebench-env >/dev/null 2>&1; then
   SAVED_ENV="$MLEBENCH_DATA_DIR/mlebench-env.tar.gz"
   if [ -f "$SAVED_ENV" ]; then
     echo "Loading saved mlebench-env from $SAVED_ENV ..."
     gunzip -c "$SAVED_ENV" | docker load
-  else
-    docker build --platform=linux/amd64 -t mlebench-env -f environment/Dockerfile . \
-      --build-arg INSTALL_HEAVY_DEPENDENCIES="$INSTALL_HEAVY_DEPENDENCIES"
+    if [ "$INSTALL_HEAVY_DEPENDENCIES" = "true" ] \
+       && ! docker run --rm --entrypoint bash mlebench-env \
+              -lc "conda run -n agent python -c 'import tensorflow'" >/dev/null 2>&1; then
+      echo "Saved image predates heavy deps — discarding and rebuilding."
+      docker image rm -f mlebench-env
+    fi
   fi
+fi
+if ! docker image inspect mlebench-env >/dev/null 2>&1; then
+  docker build --platform=linux/amd64 -t mlebench-env -f environment/Dockerfile . \
+    --build-arg INSTALL_HEAVY_DEPENDENCIES="$INSTALL_HEAVY_DEPENDENCIES"
 fi
 
 # ── agent image: aide-prelude ─────────────────────────────────────────

@@ -11,3 +11,27 @@ git+https://github.com/thesofakillers/aideml@v6.3.3
 # last 0.27.x restores the environment aideml shipped against. (Resolved on-box
 # 2026-07-22.)
 httpx==0.27.2
+
+# Same category, for mle-bench rather than aideml: environment/requirements.txt
+# pins `albumentations==1.4.14` but leaves its dependency `albucore` unpinned, so
+# a build today resolves albucore 0.2.x, which moved `preserve_channel_dim` out
+# of `albucore.utils`. albumentations then installs but raises ImportError on
+# `import albumentations`. It is the standard augmentation library for Kaggle
+# vision work, so the failure lands on exactly the competitions that need it, and
+# it fails at import rather than at install — invisible in a build log. 0.0.16 is
+# the last release with the API 1.4.14 expects (0.0.19 already breaks). Pinned
+# here rather than in mle-bench's file so the checkout stays identical to the
+# pinned upstream commit. (Found on-box 2026-09-01.)
+albucore==0.0.16
+
+# The one package AIDE's environment prompt advertises that no upstream installs.
+# aideml's prompt names numpy, pandas, scikit-learn, statsmodels, xgboost,
+# lightGBM, torch, torchvision, torch-geometric, bayesian-optimization and timm
+# as already installed (aide/agent.py); mle-bench's requirements.txt carries every
+# one of those except statsmodels. Two upstreams disagreeing rather than either
+# being wrong. Resolved toward the prompt, because the prompt is what conditions
+# the agent's behavior: a claim the environment cannot honor costs steps at the
+# point the agent acts on it, and it does so unevenly across competitions. Pinned
+# for reproducibility; 0.15.0 leaves the numpy/scipy/pandas pins untouched.
+# (Verified on-box 2026-09-01.)
+statsmodels==0.15.0
