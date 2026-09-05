@@ -336,16 +336,17 @@ accounting section of RESEARCH_DESIGN.md.
   from the host, so nothing is needed inside the container:
 
   ```bash
-  PID=$(pgrep -f 'bin/aide data_dir')
-  sudo py-spy dump --pid $PID    # where the agent actually is; `top` for live
-  pidstat -p $PID 5              # is it on CPU at all
-  iostat -x 5                    # or blocked on disk
-  nvidia-smi dmon                # or waiting on a GPU it never uses
+  ssh <box> '~/work/prelude/scripts/agent_stack.sh'   # both stacks + GPU
+  pidstat -p $(pgrep -f 'bin/aide data_dir') 5        # is it on CPU at all
+  iostat -x 5                                        # or blocked on disk
   ```
 
-  A stack in `aide/interpreter.py` means the agent's own code is running (a
-  valid slow step); one in the Anthropic client means the model call is hanging
-  (a wiring problem). Record which in the run notes — the distinction decides
-  whether a timeout is a fix or a mask.
+  `agent_stack.sh` dumps AIDE and the subprocess running its generated code,
+  labelled, because the answer differs by which one is stuck. A stack under
+  `aide/interpreter.py` or in the agent's own `runfile.py` means its solution is
+  running, however slowly — a result, not a fault. A stack in the Anthropic
+  client means the model call is hanging, which is a wiring problem. Record
+  which in the run notes: the distinction decides whether an `exec.timeout` is a
+  fix or a mask.
 - Serial runtime is a scoping constraint alongside cost: one instance drains the
   queue one run at a time, so the per-run cap sets how long the whole grid takes.
