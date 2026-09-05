@@ -35,9 +35,24 @@ from harness.registry import load_runs
 from harness.status import live_container, summarize
 
 LOG_LINES = 60
+VERBOSE_LINES = 120
 CODE_CHARS = 4000
 # Where aide-prelude/Dockerfile puts the agent's logs inside the container.
 LOGS_DIR = "/home/logs"
+
+# A 30s re-render is enough to see a run progressing but not to watch a step
+# fail. Rather than build a streaming endpoint for that, hand over the commands
+# that already stream — the container name is generated per run, so they resolve
+# it by filter instead of asking anyone to copy it.
+FOLLOW_COMMANDS = f"""\
+# what the agent is doing (from the box)
+docker exec $(docker ps -q --filter name=competition-) tail -f {LOGS_DIR}/aide.log
+
+# why a node came back buggy — tracebacks and full model responses
+docker exec $(docker ps -q --filter name=competition-) tail -f {LOGS_DIR}/aide.verbose.log
+
+# either of the above from the laptop, without an interactive session
+ssh <box> 'docker exec $(docker ps -q --filter name=competition-) tail -f {LOGS_DIR}/aide.log'"""
 
 
 def _run_group_dirs() -> list[Path]:
@@ -106,6 +121,11 @@ def live_progress(*, container: str | None) -> dict:
     if not container:
         return {}
     log = _container_file(container=container, path=f"{LOGS_DIR}/aide.log") or ""
+    # aide.log narrates which node is drafting or executing; the traceback that
+    # explains WHY a node came back buggy is only in the verbose log, and
+    # journal.json does not carry it either (aideml serializes term_out empty).
+    # Without this pane a run of failing nodes is visible but unattributable.
+    verbose = _container_file(container=container, path=f"{LOGS_DIR}/aide.verbose.log") or ""
     usage_raw = _container_file(container=container, path=f"{LOGS_DIR}/prelude_token_usage.jsonl")
     calls, truncated = 0, 0
     for line in (usage_raw or "").splitlines():
@@ -117,6 +137,7 @@ def live_progress(*, container: str | None) -> dict:
         truncated += call.get("stop_reason") == "max_tokens"
     return {
         "aide_log": "\n".join(log.splitlines()[-25:]),
+        "verbose_log": "\n".join(verbose.splitlines()[-VERBOSE_LINES:]),
         "calls": calls,
         "truncated": truncated,
     }
@@ -259,7 +280,9 @@ def _live_block(*, live: dict) -> str:
     )
     return f"""<h2>Live</h2>
 <div class="meta">{live['calls']} agent calls so far{warn}</div>
-<pre>{html.escape(live['aide_log']) or '(no aide.log yet)'}</pre>"""
+<pre class="tail">{html.escape(live['aide_log']) or '(no aide.log yet)'}</pre>
+<details><summary>verbose log — last {VERBOSE_LINES} lines (tracebacks, model responses)</summary>
+<pre class="tail">{html.escape(live['verbose_log']) or '(no aide.verbose.log yet)'}</pre></details>"""
 
 
 def render(*, state: dict) -> str:
@@ -314,7 +337,20 @@ def render(*, state: dict) -> str:
 </table>
 
 <h2>Container log (last {LOG_LINES} lines)</h2>
-<pre>{html.escape(state['logs']) or '(no live container)'}</pre>
+<pre class="tail">{html.escape(state['logs']) or '(no live container)'}</pre>
+
+<h2>Follow live from a terminal</h2>
+<div class="meta">This page re-renders every 30s. To watch a log as it is written:</div>
+<pre>{html.escape(FOLLOW_COMMANDS)}</pre>
+
+<script>
+ // Every pane above is a tail, so the newest lines are at the BOTTOM — but a
+ // scrollable <pre> opens at the top, which shows the oldest lines and reads as
+ // a stalled run. Scroll each one to its end after the page renders.
+ for (const pane of document.querySelectorAll('pre.tail')) {{
+   pane.scrollTop = pane.scrollHeight;
+ }}
+</script>
 """
 
 
