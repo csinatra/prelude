@@ -331,5 +331,21 @@ accounting section of RESEARCH_DESIGN.md.
   `journal.json` serializes `term_out` empty. The service reads the box's `.env`,
   so `systemctl restart prelude-dashboard` after changing
   `PRELUDE_REGISTRY_STAGE`. `--out page.html` writes one snapshot instead.
+- **A step that has gone quiet.** A long step and a wedged one read the same in
+  a log; these separate them. The agent process runs under `runc` and is visible
+  from the host, so nothing is needed inside the container:
+
+  ```bash
+  PID=$(pgrep -f 'bin/aide data_dir')
+  sudo py-spy dump --pid $PID    # where the agent actually is; `top` for live
+  pidstat -p $PID 5              # is it on CPU at all
+  iostat -x 5                    # or blocked on disk
+  nvidia-smi dmon                # or waiting on a GPU it never uses
+  ```
+
+  A stack in `aide/interpreter.py` means the agent's own code is running (a
+  valid slow step); one in the Anthropic client means the model call is hanging
+  (a wiring problem). Record which in the run notes — the distinction decides
+  whether a timeout is a fix or a mask.
 - Serial runtime is a scoping constraint alongside cost: one instance drains the
   queue one run at a time, so the per-run cap sets how long the whole grid takes.

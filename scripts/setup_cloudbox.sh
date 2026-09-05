@@ -93,6 +93,19 @@ sudo tee /etc/apt/apt.conf.d/99lock-timeout >/dev/null <<'EOF'
 DPkg::Lock::Timeout "600";
 EOF
 
+# ── stall diagnostics (py-spy, sysstat) ─────────────────────────────────
+# A step that has been running for hours and a step that is wedged look
+# identical in a log, and a 2026-09-01 run burned 2.5h before being killed
+# without ever establishing which it was. container_config.json grants
+# SYS_PTRACE for this, but the capability is useless without the profiler:
+# install it here so a provisioned box can always answer the question.
+# Host-side deliberately — the agent container has no package access, and the
+# agent process is visible from the host under runc, so nothing needs to be
+# installed into the image the eval runs on.
+#   PID=$(pgrep -f 'bin/aide data_dir'); sudo py-spy dump --pid $PID
+sudo apt-get install -y -qq python3-pip sysstat
+sudo pip3 install --quiet py-spy
+
 # ── Python 3.11 (mle-bench requires >=3.11; Lambda Stack ships 3.10) ─────
 if ! command -v "$PY" >/dev/null; then
   sudo apt-get update
