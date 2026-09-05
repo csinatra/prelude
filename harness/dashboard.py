@@ -51,8 +51,8 @@ docker exec $(docker ps -q --filter name=competition-) tail -f {LOGS_DIR}/aide.l
 # why a node came back buggy — tracebacks and full model responses
 docker exec $(docker ps -q --filter name=competition-) tail -f {LOGS_DIR}/aide.verbose.log
 
-# either of the above from the laptop, without an interactive session
-ssh <box> 'docker exec $(docker ps -q --filter name=competition-) tail -f {LOGS_DIR}/aide.log'"""
+# either of the above from the laptop; -t so ctrl-c reaches the tail
+ssh -t <box> 'docker exec $(docker ps -q --filter name=competition-) tail -f {LOGS_DIR}/aide.log'"""
 
 
 def _run_group_dirs() -> list[Path]:
