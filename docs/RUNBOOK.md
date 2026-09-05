@@ -317,19 +317,19 @@ accounting section of RESEARCH_DESIGN.md.
   outstanding, so a finished queue's silence is not reported as a problem.
 - **Watching a run in progress.** `harness.status` answers "is the queue
   moving"; `harness.dashboard` answers "what is the agent doing", which needs
-  the search tree, the host metrics and the logs side by side. Serve it on the
-  box and reach it over a tunnel rather than opening a port on a box holding API
-  keys:
+  the search tree, the host metrics and the logs side by side. `setup_cloudbox.sh`
+  installs it as `prelude-dashboard.service`, so it is already serving on a
+  provisioned box; it binds to 127.0.0.1, so reach it over a tunnel:
 
   ```bash
-  ssh <box> 'cd ~/work/prelude && .venv/bin/python -m harness.dashboard --serve'
-  ssh -N -L 8000:localhost:8000 <box>   # second terminal, then open localhost:8000
+  ssh -N -L 8000:localhost:8000 <box>   # then open http://localhost:8000
   ```
 
   The page re-renders every 30s. To watch a log as it is written, use the
   `docker exec ... tail -f` commands the page prints — `aide.log` for what the
   agent is doing, `aide.verbose.log` for why a node came back buggy, since
-  `journal.json` serializes `term_out` empty. `--out page.html` writes one
-  snapshot instead of serving.
+  `journal.json` serializes `term_out` empty. The service reads the box's `.env`,
+  so `systemctl restart prelude-dashboard` after changing
+  `PRELUDE_REGISTRY_STAGE`. `--out page.html` writes one snapshot instead.
 - Serial runtime is a scoping constraint alongside cost: one instance drains the
   queue one run at a time, so the per-run cap sets how long the whole grid takes.

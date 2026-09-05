@@ -220,6 +220,34 @@ docker build --platform=linux/amd64 -t aide-prelude agents/aide-prelude/ \
   --build-arg CODE_DIR="$CODE_DIR" --build-arg AGENT_DIR="$AGENT_DIR"
 cd ..
 
+# ── run dashboard (harness.dashboard) ───────────────────────────────────
+# Installed as a unit rather than left as a command to remember, for the same
+# reason as the guest agent above: the observability you have to start by hand
+# is the observability you do not have when a 12h unattended drain goes wrong.
+# It stores nothing and only reads the registry, AIDE's journal and docker logs,
+# so it cannot disagree with them or corrupt a run. Bound to 127.0.0.1 by the
+# module — reach it over an ssh tunnel, never an open port on a box holding API
+# keys. Reads the same .env as the batch driver, so it reports whichever stage
+# the box is set to; restart it after changing PRELUDE_REGISTRY_STAGE.
+sudo tee /etc/systemd/system/prelude-dashboard.service >/dev/null <<EOF
+[Unit]
+Description=prelude run dashboard
+After=docker.service
+
+[Service]
+User=$(whoami)
+WorkingDirectory=$WORK_DIR/prelude
+EnvironmentFile=$WORK_DIR/prelude/.env
+ExecStart=$WORK_DIR/prelude/.venv/bin/python -m harness.dashboard --serve --port 8000
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable --now prelude-dashboard.service
+sudo systemctl restart prelude-dashboard.service
+
 echo "Provisioned (results/ -> $RESULTS_DIR on the persistent volume). Next steps:"
 echo "  1. Prepare the smoke competition (persistent volume, one-time):"
 echo "     cd mle-bench && .venv/bin/mlebench prepare -c random-acts-of-pizza --data-dir \$MLEBENCH_DATA_DIR"
@@ -233,3 +261,5 @@ echo "  4. Drain the queue back-to-back once the seams are confirmed (prelude's"
 echo "     venv, not mle-bench's — they are different Python versions):"
 echo "     cd $WORK_DIR/prelude && .venv/bin/python -m harness.batch \\"
 echo "       --data-dir \$MLEBENCH_DATA_DIR --terminate-on-done --instance-id <id>"
+echo "  5. Watch it: the dashboard is already serving on the box. From the laptop,"
+echo "     ssh -N -L 8000:localhost:8000 <box>   then open http://localhost:8000"
