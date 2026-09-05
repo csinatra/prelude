@@ -59,3 +59,22 @@ RUN conda run -n ${CONDA_ENV_NAME} python -c \
      new = 'journal_copy.nodes = [n for n in journal_copy.nodes if n.id in path]'; \
      assert src.count(old) == 1, 'aideml filter_on_path changed — re-check this patch'; \
      open(m.__file__, 'w').write(src.replace(old, new))"
+
+# Fix a second upstream aideml bug: the REPL executes agent code with an empty
+# globals dict, so `__name__` is not defined there and the lookup falls through
+# to builtins, where it is 'builtins'. Every `if __name__ == "__main__":` guard
+# therefore evaluates False and the program does nothing — exiting in ~2s with
+# no output and no exception, which the reviewer can only read as "buggy".
+# AIDE's own prompt asks for "a single-file python program that is
+# self-contained and can be executed as-is", which invites exactly that idiom.
+# Observed 2026-09-05 on uw-madison: 7 of 8 nodes silent, and the correlation
+# with the guard was perfect — the one node without a guard was the one that ran.
+# Setting __name__ makes exec match how the same file behaves under `python
+# runfile.py`, which is the behavior both the prompt and the agent assume.
+RUN conda run -n ${CONDA_ENV_NAME} python -c \
+    "import aide.interpreter as m; \
+     src = open(m.__file__).read(); \
+     old = 'global_scope: dict = {}'; \
+     new = 'global_scope: dict = {\"__name__\": \"__main__\"}'; \
+     assert src.count(old) == 1, 'aideml _run_session changed — re-check this patch'; \
+     open(m.__file__, 'w').write(src.replace(old, new))"
