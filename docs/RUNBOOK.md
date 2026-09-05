@@ -315,5 +315,21 @@ accounting section of RESEARCH_DESIGN.md.
   left open. Run on the dev machine it works but reports whatever was last
   synced, and finds no container. A stall is flagged only while work is
   outstanding, so a finished queue's silence is not reported as a problem.
+- **Watching a run in progress.** `harness.status` answers "is the queue
+  moving"; `harness.dashboard` answers "what is the agent doing", which needs
+  the search tree, the host metrics and the logs side by side. Serve it on the
+  box and reach it over a tunnel rather than opening a port on a box holding API
+  keys:
+
+  ```bash
+  ssh <box> 'cd ~/work/prelude && .venv/bin/python -m harness.dashboard --serve'
+  ssh -N -L 8000:localhost:8000 <box>   # second terminal, then open localhost:8000
+  ```
+
+  The page re-renders every 30s. To watch a log as it is written, use the
+  `docker exec ... tail -f` commands the page prints — `aide.log` for what the
+  agent is doing, `aide.verbose.log` for why a node came back buggy, since
+  `journal.json` serializes `term_out` empty. `--out page.html` writes one
+  snapshot instead of serving.
 - Serial runtime is a scoping constraint alongside cost: one instance drains the
   queue one run at a time, so the per-run cap sets how long the whole grid takes.
