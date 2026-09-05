@@ -150,7 +150,41 @@ but it is not a data point: the dev budget is a fraction of the eval budget and
 the competition is off-eval by design. A's runs are prepared with every other
 condition in step 2.
 
-## 5. Condition runs
+## 5. Calibration run (one-time, pins the agent budget)
+
+Run before the eval grid, on the reserved calibration competition
+(`uw-madison-gi-tract-image-segmentation`; see RESEARCH_DESIGN.md for why that
+one). Its purpose is the convergence curve that fixes the per-run budget, so it
+uses the full agent, the pinned `EVAL_MODEL` spec, and its own registry stage:
+
+```bash
+PRELUDE_REGISTRY_STAGE=calibration
+```
+
+Two checks, neither of which fails loudly on its own.
+
+**After the first spec is built, confirm the token metrics are not null.**
+
+```bash
+PRELUDE_REGISTRY_STAGE=calibration python -c "
+from harness import registry
+run = list(registry.load_runs().values())[-1]
+print({k: run.get(k) for k in ('spec_tokens', 'block_tokens', 'synthesis_tokens')})"
+```
+
+`harness.runner._count_tokens` catches every exception and returns `None`,
+including on a missing `MODEL` env var. A calibration run that silently nulls all
+three would produce H3 measurements with nothing behind them and no error
+anywhere to show for it.
+
+**After the agent run, read the best node's own analysis against the injected
+`spec.md` once.** This is the fastest detector of a broken injection: if the
+agent's plan shows no trace of spec content, that has to be known during
+calibration rather than at judging time, when every run is already spent. It is
+an operational smoke check and not evidence for H2, which the base-rate
+counterfactual measures.
+
+## 6. Condition runs
 
 The spec is injected via the `PRELUDE_SPEC_PATH` env var. `setup_cloudbox.sh`
 patches mle-bench's `agents/run.py` (`run_agent.py` has no `--extra-mount`) with a
@@ -179,7 +213,7 @@ right after the `ADVISOR CONTEXT` banner (absent for A), the C2 structured
 content (flags/recommendations) appeared in AIDE's prompt, and a valid
 `submission.csv` + journal landed in the run's output dir.
 
-## 6. Record and grade (box)
+## 7. Record and grade (box)
 
 ```bash
 cd ~/work/prelude
@@ -201,7 +235,7 @@ trajectory analysis.
 
 ### Automated: drain the queue (recommended once the seams are confirmed)
 
-Steps 4–6 above are the manual, one-run-at-a-time path — use them for the
+Steps 6–7 above are the manual, one-run-at-a-time path — use them for the
 first smoke run to confirm the box-specific seams. After that, `harness.batch`
 runs every unfinished run in the registry back-to-back (agent → grade →
 advance), so the GPU never idles between runs or after the last one:
@@ -248,7 +282,7 @@ seams target (via a manual `run_agent` + `grade-sample`), but `harness.batch`'s
 own `_grade` (JSONL form) and `_read_journal_metrics` were not exercised —
 verify on the first automated batch run before relying on the drained path.
 
-## 7. Merge back and analyze (dev machine)
+## 8. Merge back and analyze (dev machine)
 
 ```bash
 rsync -av <box>:~/work/prelude/results/ results/

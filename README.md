@@ -46,13 +46,21 @@ MLE-bench baselines.
 
 ## Conditions
 
-A 2 (retrieval: flat vs staged) × 3 (synthesis: none / freeform /
-structured-critical) design — full rationale in
-[docs/RESEARCH_DESIGN.md](docs/RESEARCH_DESIGN.md):
+An additive ladder rather than a factorial: each step changes exactly one
+variable, so an effect can be attributed to the step that introduced it. Full
+rationale in [docs/RESEARCH_DESIGN.md](docs/RESEARCH_DESIGN.md):
+
+```mermaid
+flowchart LR
+    A["A<br/>no spec"] -->|knowledge provision| B1["B1<br/>raw block"]
+    B1 -->|synthesis prose| B2["B2<br/>+ freeform advice"]
+    B2 -->|staged retrieval| C1["C1<br/>4 directed queries"]
+    C1 -->|structured synthesis<br/>+ critical stance| C2["C2<br/>typed flags"]
+```
 
 | Condition | Retrieval | Synthesis | Module |
 |-----------|-----------|-----------|--------|
-| A | none | none | published MLE-bench baseline, cited not run |
+| A | none | none | stock AIDE, no spec mounted — run at every eval competition and seed |
 | B1 | flat, single query | none — raw context block | `pipeline/condition_b.py` |
 | B2 | flat, single query | freeform, stance-free | `pipeline/condition_b.py` |
 | C1 | staged, 4 directed queries | freeform, stance-free (pilot condition) | `pipeline/condition_c1.py` |
@@ -151,6 +159,7 @@ full-scope run needs at its size. Sizing and cost for both slices are in
 - **AssistedDS** (EMNLP 2025) — baseline condition; finding: LLMs uncritically adopt unstructured knowledge.
 - **CatDB** (VLDB 2025) — closest existing analog; assumes populated data catalog, doesn't address unknown signals.
 - **DS-Agent** (Guo et al., ICML 2024) — closest prior art; CBR over retrieved Kaggle solutions, iteratively revised against execution feedback (Prelude builds its spec once, upfront).
+- **Automated Weak-to-Strong Researcher** (Wen et al., Anthropic Alignment Science, 2026; partly done through the Anthropic Fellows Program) — close prior art testing the same question in an open-ended domain, and the finding that runs against this project's premise: less imposed structure produced better performance, with a rigid workflow and pre-generated ideas both underperforming autonomy. H1 is the engagement with it; see RESEARCH_DESIGN.md.
 - **MLE-Dojo** (Qiang et al., 2025) — Gym-style benchmark/training environment over 200+ Kaggle competitions; scope contrast, not competing (doesn't study the agent's starting specification).
 - **RE-Bench** (METR, 2025) — frontier AI R&D evaluation against human experts; source of the long-horizon failure mode this project targets (agents entrench incorrect assumptions), and independent corroboration that automated grading structurally limits how representative any such benchmark can be. <https://arxiv.org/abs/2411.15114>
 - **Yang et al. 2023**, "LLMs as Optimizers" — conceptual foundation.

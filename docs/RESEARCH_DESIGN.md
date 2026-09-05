@@ -861,9 +861,20 @@ through the Anthropic Fellows Program) found that imposing structure on an
 autonomous ML research agent hurt performance twice over. A rigid execution
 workflow underperformed full autonomy, and handing agents specific
 pre-generated research ideas underperformed giving them ambiguous directions
-and letting them propose the concrete idea themselves. The first result does not
-reach this design. It concerns constraining how an agent iterates, and AIDE's
-tree search is untouched by anything the spec pipeline produces. The spec
+and letting them propose the concrete idea themselves.
+
+H1 is the engagement with that finding, not the distinctions below it. AAR asked
+whether imposed structure helps in an open-ended research setting; H1 asks the
+same of a bounded, verifiable one, so a null or negative H1 corroborates AAR in a
+second domain rather than needing to be explained away. The retrieval
+concentration covariate (analysis plan, 2026-08-27) carries a weaker second
+reading, since concentrated evidence associating with worse outcomes would be
+AAR's effect appearing inside this design. What follows is only why the two
+setups are not equivalent.
+
+The first result does not reach this design. It concerns constraining how an
+agent iterates, and AIDE's tree search is untouched by anything the spec pipeline
+produces. The spec
 changes what AIDE starts with, never how it may search, backtrack, or revise
 afterward.
 
@@ -973,8 +984,12 @@ a measure.
   Lite competitions have practitioner notebooks, and retrieved-doc counts are
   reported per competition per condition as descriptive statistics. The 2026-08-11
   audit showed the practical effect: competitions with shallow near-neighbor pools
-  retrieve further down the ranking and pick up more low-substance documents.
-  Corpus expansion reduces this; it does not remove the reporting obligation.
+  retrieve further down the ranking and pick up more low-substance documents, and
+  coursework competitions were later seen surfacing in C's vision retrieval
+  (DECISIONS 2026-08-17). Corpus expansion reduces this; it does not remove the
+  reporting obligation. The pre-registered retrieval-concentration covariate
+  records per run how narrow the drawn evidence was, so the variation sits beside
+  the paired deltas rather than inside them.
 - **Corpus homogeneity (structural, conservative).** Every practitioner document
   is one model under one prompt, so the corpus shares a register, length, and
   organization that a real knowledge base — tickets, notebooks, postmortems,
@@ -1000,19 +1015,14 @@ a measure.
   present in both WecoAI's original and mle-bench's designated fork, so it is a
   property of the scaffold under test rather than anything introduced here.
 
-  Left in place deliberately. Editing an agent's prompt so that it prefers the
-  framework this corpus happens to favor would tune the scaffold toward the
-  treatment, and would cost the claim that this is stock aide plus two
-  non-algorithmic fixes. Direction of bias is toward the null: retrieved advice
-  is disproportionately expressed in a framework the agent is nudged away from,
-  so retrieval-bearing conditions are if anything handicapped against Condition
-  A, which reasons from no retrieved advice at all. It bears on how *actionable*
-  retrieved knowledge is rather than on the C2-vs-B2 contrast, since every
-  retrieval condition draws on the same corpus and meets the same prompt.
-
-  What it does require is that the nudge stay a preference rather than becoming a
-  wall. Both frameworks are installed and both reach the GPU (verified on an
-  A10), so an agent following Keras-shaped advice can execute it.
+  Left in place deliberately: editing it would tune the scaffold toward the
+  treatment. Bias is toward the null, since retrieved advice is disproportionately
+  expressed in a framework the agent is nudged away from, which handicaps the
+  retrieval-bearing conditions relative to Condition A. It bears on how
+  *actionable* retrieved knowledge is rather than on the C2-vs-B2 contrast, since
+  every retrieval condition meets the same corpus and the same prompt. Both
+  frameworks are installed and both reach the GPU (verified on an A10), so the
+  nudge stays a preference rather than a wall.
 - **POC scale (consolidated, NOT structural).** Several limitations follow from
   running small. They are collected here rather than scattered across the
   document. None is a flaw in the design, and unlike the structural limits above,

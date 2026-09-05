@@ -21,11 +21,22 @@ the credibility of the headline mechanistic claim.
 
 ## Protocol
 
+```mermaid
+flowchart LR
+    F["C2 flag"] --> J["condition-blind judge"]
+    J --> R["acted_on /<br/>not_acted_on"]
+    F --> BR["same flag vs<br/>paired B2 solution"]
+    BR --> BASE["base rate"]
+    R --> S["stratified<br/>blinded sample"]
+    S --> H["human anchor"]
+    H --> K["agreement<br/>(kappa, PABAK)"]
+    R --> K
+```
+
 **Sample.** 20 to 30 judged flags drawn by `analysis.judge_agreement export`,
-stratified over (flag category, judge classification) so all three rubric
-classes appear even when one is rare. `not_acted_on` is expected to be the rare
-class. Sampling is seeded, so the drawn sample is reproducible from the same
-judgment file.
+stratified over (flag category, judge classification) so both rubric
+classes appear even when one is rare. Sampling is seeded, so the drawn sample is
+reproducible from the same judgment file.
 
 **Scope.** Drawn across the eval competitions' C2 runs by default, since
 agreement estimated on several problems covers more of the judge's behavior than
@@ -45,7 +56,7 @@ in advance and keys on measured artifact size, never on the result:
 - **Default** — draw across competitions, capping the number of distinct runs so
   the artifact load stays reviewable.
 - **Narrow to one competition** when the measured bundles make a multi-problem
-  draw unreviewable, or when a cross-competition draw cannot populate all three
+  draw unreviewable, or when a cross-competition draw cannot populate both
   rubric classes.
 - **Narrow further** — fewer runs or a tighter chain — if even a single
   competition's bundles are too large.
@@ -89,9 +100,10 @@ That rule is enforced when the labels are read, not only in the page, so both
 raters are held to it whatever produced the file.
 
 **Scoring.** `analysis.judge_agreement score` reports percent agreement,
-Cohen's kappa over the three classes, and the full confusion table. The
-reviewer's quotes are retained alongside their labels: two raters can agree on a
-class while pointing at different lines, which a confusion table cannot show.
+Cohen's kappa over the two classes, PABAK beside it, and the full confusion
+table. The reviewer's quotes are retained alongside their labels: two raters can
+agree on a class while pointing at different lines, which a confusion table
+cannot show.
 
 **Timing.** This runs **before** the mechanistic results are written up, not
 after. A low-agreement result has to be able to change how the results are
@@ -123,6 +135,12 @@ stated before seeing results only to prevent a post-hoc reading:
 - **kappa < 0.4:** weak. The per-flag mechanistic claims are downgraded to
   descriptive observations, and H2 is reported as untested rather than
   unsupported. The judge, not the pipeline, is the thing that failed.
+
+Kappa is unstable when the two classes are skewed, so PABAK (2 × observed
+agreement − 1) is reported beside it. On a dev-smoke sample the raters matched
+three times in four and kappa still fell to −0.136. The confusion table
+arbitrates, since agreement concentrated in the majority class means something
+different from agreement spread across both.
 
 At a sample of 20 to 30 the kappa estimate is itself imprecise. It is a
 credibility check on the judging instrument, not a precise reliability
