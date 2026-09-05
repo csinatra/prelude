@@ -83,6 +83,16 @@ if ! systemctl list-unit-files 2>/dev/null | grep -q lambda-guest-agent; then
     || echo "WARN: guest-agent install failed — continuing without host telemetry" >&2
 fi
 
+# ── apt lock contention ─────────────────────────────────────────────────
+# Provisioning starts within a minute of boot, while cloud-init is still
+# running its own unattended upgrade, so the first apt-get here loses a race
+# for /var/lib/dpkg/lock-frontend and `set -e` aborts the whole provision.
+# Waiting is the correct behaviour, and apt has supported it natively since
+# 2.0 — set it once as config rather than at each of the call sites below.
+sudo tee /etc/apt/apt.conf.d/99lock-timeout >/dev/null <<'EOF'
+DPkg::Lock::Timeout "600";
+EOF
+
 # ── Python 3.11 (mle-bench requires >=3.11; Lambda Stack ships 3.10) ─────
 if ! command -v "$PY" >/dev/null; then
   sudo apt-get update
