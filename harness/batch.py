@@ -184,7 +184,8 @@ def _run_agent(*, run: dict, data_dir: Path) -> AgentOutputs:
         solution_path=solution_path,
         token_usage_path=token_usage_path,
         viz_paths=_locate_viz(run_output_dir=run_output_dir)
-        + _locate_run_log(run_output_dir=run_output_dir),
+        + _locate_run_log(run_output_dir=run_output_dir)
+        + _locate_agent_logs(run_output_dir=run_output_dir),
     )
 
 
@@ -267,6 +268,19 @@ def _locate_viz(*, run_output_dir: Path) -> tuple[str, ...]:
     left in logs/ as HTML is worth keeping. Absent is fine: nothing downstream
     requires it."""
     return tuple(str(path) for path in sorted(run_output_dir.glob("**/logs/*.html")))
+
+
+def _locate_agent_logs(*, run_output_dir: Path) -> tuple[str, ...]:
+    """aideml's own logs — the only record of what was actually sent to the model.
+
+    journal.json preserves what each node did; only aide.verbose.log preserves
+    the prompts that produced it, and questions about *why* an agent behaved a
+    certain way can only be answered there. mle-bench writes these to its runs/
+    tree on the box's boot disk, which a terminated instance destroys, so they
+    are copied out with the other artifacts rather than left behind (2026-09-05:
+    a run's evidence had to be rescued by hand mid-flight for exactly this
+    reason)."""
+    return tuple(str(path) for path in sorted(run_output_dir.glob("**/logs/*.log")))
 
 
 def _node_end(*, node: dict) -> float | None:
