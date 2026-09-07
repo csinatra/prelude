@@ -130,9 +130,13 @@ did X and it worked") and not documentation housekeeping. Milestones belong in
 the entry has no alternative that was rejected and no consequence a reviewer
 would question, it is not a decision.
 
-- Keep an entry short where a line will do, with the full rationale at the
-  pointer. Extend it when the reasoning *is* the decision and would otherwise
-  live nowhere.
+- **Terse by default; a pointer, not a summary.** If the reasoning already lives
+  in a code comment, config comment, or design doc, the entry names the decision
+  and points there. Do not restate it. Before writing a sentence, check whether
+  the pointer already carries it — if so, delete the sentence.
+  An entry earns extra length only for what exists **nowhere else**: a rejected
+  alternative and why, a pre-registered trigger or commitment, a consequence a
+  reviewer would question. Those are the decision; the mechanism is not.
 - Append only. Never rewrite or delete a past entry, even a wrong one.
 - A reversed decision gets a **new dated entry recording the reversal and why**,
   leaving the original in place. The change of mind is part of the record.
@@ -191,6 +195,11 @@ Strong success criteria let you loop independently. "Make it work" doesn't.
   is the contract between stages and the documentation of the pipeline.
 - Logging: `print()` is fine for the toy; use `logging` once we have the
   real graph. No `loguru` needed at this scale.
+- **Commit messages: terse, and never a restatement of the diff.** Subject line
+  plus, at most, a short body for what the code cannot say — why this over the
+  alternative, or what a reader would otherwise misread. When the rationale is
+  already in the comments the change adds, the subject line alone is the whole
+  message. The same rule as decision-log entries, for the same reason.
 
 ## Layout
 
