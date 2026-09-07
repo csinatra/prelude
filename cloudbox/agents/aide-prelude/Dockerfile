@@ -78,3 +78,26 @@ RUN conda run -n ${CONDA_ENV_NAME} python -c \
      new = 'global_scope: dict = {\"__name__\": \"__main__\"}'; \
      assert src.count(old) == 1, 'aideml _run_session changed — re-check this patch'; \
      open(m.__file__, 'w').write(src.replace(old, new))"
+
+# Give the debug prompt the reviewer's diagnosis, not just the raw output.
+# aideml reviews every node and stores the verdict on `node.analysis`, but
+# `_debug` passes only the parent's code and term_out — so the agent sees the
+# symptom and never the interpretation. That is fine for a crash, where the
+# traceback speaks for itself, and useless for a semantic failure. Observed
+# 2026-09-05 on uw-madison: five nodes ran to completion, produced valid
+# submissions, and were each rejected for `val_dice=1.0000` (a degenerate
+# all-empty solution). The reviewer diagnosed it correctly every time —
+# "implausible, indicates data leakage or a broken validation loop" — and the
+# agent was never shown that sentence, so it reproduced the same solution
+# across ~7 hours of the run's 12h budget.
+#
+# This adds no knowledge of ours: the diagnosis is written by the same model
+# from the same output, and we only stop discarding it. Anchored on the term_out
+# line, which appears once and only in _debug.
+RUN conda run -n ${CONDA_ENV_NAME} python -c \
+    "import aide.agent as m; \
+     src = open(m.__file__).read(); \
+     old = 'wrap_code(parent_node.term_out, lang=\"\"),'; \
+     new = old + ' \"Diagnosis of the failure\": (parent_node.analysis or \"(none recorded)\"),'; \
+     assert src.count(old) == 1, 'aideml _debug prompt changed — re-check this patch'; \
+     open(m.__file__, 'w').write(src.replace(old, new))"
