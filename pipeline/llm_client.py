@@ -25,6 +25,19 @@ OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 
 _anthropic_client = anthropic.Anthropic() if LLM_PROVIDER == "anthropic" else None
 
+# Pinned on EVERY Anthropic call, structured and freeform alike, so spec-build
+# inference compute is a designed property of each condition rather than a
+# per-prompt decision by the model. Sonnet 5 leaves thinking adaptive when the
+# field is omitted and chooses per prompt whether to use it, which made C2's
+# staged prompts liable to draw more compute than B2/C1's single freeform pass —
+# a confound directly on the claim, since this POC attributes any advantage to
+# prompt-level structure and not to inference budget. `disabled` is the only
+# setting that equalizes: Sonnet 5 rejects budget_tokens (400), so "adaptive
+# everywhere" would restate the problem rather than fix it. Surfaced 2026-09-08
+# when C1 crashed on a ThinkingBlock the freeform path did not expect while B2,
+# on the same code path, did not. (See DECISIONS.md.)
+_THINKING = {"type": "disabled"}
+
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 # Process-local usage ledger, reset/read by callers (harness.runner wraps
@@ -153,6 +166,7 @@ def call_llm_text(
         max_tokens=max_tokens,
         system=system,
         messages=[{"role": "user", "content": user}],
+        thinking=_THINKING,
     )
     # Freeform truncation is SILENT without this: no schema means nothing fails
     # to parse, so a capped B2/C1 synthesis would ship as a spec that stops
@@ -181,6 +195,7 @@ def _call_anthropic(*, system: str, user: str, response_model: type[ModelT], max
         system=system,
         messages=[{"role": "user", "content": user}],
         output_format=response_model,
+        thinking=_THINKING,
     )
     # Say what actually went wrong. A response cut off at the cap is still valid
     # JSON-so-far, so pydantic reports "EOF while parsing a string" from deep in
