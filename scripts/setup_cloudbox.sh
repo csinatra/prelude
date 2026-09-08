@@ -59,9 +59,19 @@ done
 # ── Docker + GPU preflight ──────────────────────────────────────────────
 command -v docker >/dev/null || { echo "ERROR: docker not installed" >&2; exit 1; }
 if ! docker info >/dev/null 2>&1; then
-  echo "ERROR: cannot reach the Docker daemon as $(whoami) — usually a group issue." >&2
-  echo "  Fix, then reconnect (group change needs a fresh login) and re-run:" >&2
-  echo "    sudo usermod -aG docker \$USER && exit" >&2
+  # Lambda's image never has the login user in the `docker` group, so this
+  # fired on every first provision and cost a manual usermod + reconnect. The
+  # group cannot take effect in the session that grants it, so add it and
+  # re-exec under `sg docker` rather than asking for a fresh login. The guard
+  # variable makes a still-broken daemon fail instead of looping.
+  if [ -z "${PRELUDE_DOCKER_GROUP_RETRY:-}" ] && sudo -n usermod -aG docker "$(whoami)" 2>/dev/null; then
+    echo "== added $(whoami) to the docker group; re-executing under it"
+    export PRELUDE_DOCKER_GROUP_RETRY=1
+    exec sg docker -c "$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+  fi
+  echo "ERROR: cannot reach the Docker daemon as $(whoami)." >&2
+  echo "  Auto-fix did not resolve it — check that the daemon is running:" >&2
+  echo "    sudo systemctl status docker" >&2
   exit 1
 fi
 nvidia-smi >/dev/null || { echo "ERROR: no NVIDIA GPU visible" >&2; exit 1; }

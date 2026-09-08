@@ -71,7 +71,8 @@ set -a && . ~/work/prelude/.env && set +a
 ```
 
 The script is idempotent and does the full bring-up: Docker/GPU preflight (with
-a clear message if you still need `sudo usermod -aG docker $USER` + re-login),
+adding the login user to the `docker` group and re-execing under it when needed,
+since Lambda's image never does),
 **Python 3.11** (Lambda Stack ships 3.10; mle-bench needs ≥3.11), the **Sysbox
 runtime**, the mle-bench clone at the pinned commit installed in a 3.11 venv,
 **copies** `cloudbox/agents/aide-prelude` into mle-bench's agents dir (a
