@@ -101,3 +101,26 @@ RUN conda run -n ${CONDA_ENV_NAME} python -c \
      new = old + ' \"Diagnosis of the failure\": (parent_node.analysis or \"(none recorded)\"),'; \
      assert src.count(old) == 1, 'aideml _debug prompt changed — re-check this patch'; \
      open(m.__file__, 'w').write(src.replace(old, new))"
+
+# Give `_debug` the Memory block that `_draft` and `_improve` already receive.
+# Upstream builds all three prompts the same way except for this key: `_draft`
+# and `_improve` both pass "Memory": self.journal.generate_summary(), and
+# `_debug` passes only the parent's code and output. So the one operator that
+# dominates whenever the agent is struggling — `debug_prob` is 1.0, and the
+# debug branch runs before the greedy branch — is the only one with no view of
+# what the run has already learned. Verified against the installed source
+# 2026-09-10: Memory-in-prompt was True/True/False for draft/improve/debug.
+# Anchored on the buggy-implementation key, which appears only in `_debug`.
+RUN conda run -n ${CONDA_ENV_NAME} python -c \
+    "import aide.agent as m; \
+     src = open(m.__file__).read(); \
+     old = '\"Previous (buggy) implementation\": wrap_code(parent_node.code),'; \
+     new = '\"Memory\": self.journal.generate_summary(), ' + old; \
+     assert src.count(old) == 1, 'aideml _debug prompt changed — re-check this patch'; \
+     open(m.__file__, 'w').write(src.replace(old, new))"
+
+# Carry unresolved failures in the Memory block, not just successes. Multi-line
+# logic (leaf filtering, dedup, cap), so it lives in a script rather than inline
+# here — see patches/journal_failure_memory.py for the mechanism and the reason
+# this is a design change rather than a bug fix.
+RUN conda run -n ${CONDA_ENV_NAME} python ${AGENT_DIR}/patches/journal_failure_memory.py
