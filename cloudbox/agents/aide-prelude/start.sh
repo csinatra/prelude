@@ -19,6 +19,20 @@ else
   HARDWARE="a CPU"
 fi
 export HARDWARE
+
+# PRELUDE: the rest of the compute envelope, stated as facts in additional_notes
+# (identical for every condition). CPUs come from the cgroup quota, not nproc:
+# container_config.json caps CPU time with nano_cpus, which nproc does not see,
+# so on a larger host nproc would overstate what the agent can use.
+if read -r CPU_QUOTA CPU_PERIOD < /sys/fs/cgroup/cpu.max 2>/dev/null && [ "$CPU_QUOTA" != "max" ]; then
+  NUM_CPUS=$((CPU_QUOTA / CPU_PERIOD))
+else
+  NUM_CPUS=$(nproc)
+fi
+MEM_TOTAL=$(free -g | awk '/^Mem:/ {print $2 " GB"}')
+SHM_SIZE=$(df -h /dev/shm | awk 'NR == 2 {print $2}')
+GPU_MEMORY=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader 2>/dev/null | head -1)
+export NUM_CPUS MEM_TOTAL SHM_SIZE GPU_MEMORY="${GPU_MEMORY:-0 MiB}"
 # check that we can use the GPU in PyTorch
 python -c "import torch; print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'WARNING: No GPU')"
 # check that we can use the GPU in TensorFlow
