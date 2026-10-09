@@ -124,3 +124,8 @@ RUN conda run -n ${CONDA_ENV_NAME} python -c \
 # here — see patches/journal_failure_memory.py for the mechanism and the reason
 # this is a design change rather than a bug fix.
 RUN conda run -n ${CONDA_ENV_NAME} python ${AGENT_DIR}/patches/journal_failure_memory.py
+
+# The grading server's own mlebench (the agent's validation endpoint) gets the
+# same grader-alignment patch as the host checkout, so the two never disagree.
+# Grading-side, not an aideml change — see the script for why.
+RUN conda run -n mleb python ${AGENT_DIR}/patches/mlebench_grader_alignment.py

@@ -202,6 +202,9 @@ if [ ! -x .venv/bin/python ] \
   "$PY" -m venv .venv
 fi
 .venv/bin/pip install --quiet -e .
+# Two graders score by row position; align them by id like the rest. Host copy
+# does the final grading; the agent image gets the same patch for its validator.
+.venv/bin/python "$WORK_DIR/prelude/cloudbox/agents/aide-prelude/patches/mlebench_grader_alignment.py"
 
 # Our agent variant: COPY, not symlink — mle-bench's registry discovers agents
 # with pathlib glob('**/config.yaml'), which does not descend into symlinked
