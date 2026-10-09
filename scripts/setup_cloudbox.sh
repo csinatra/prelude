@@ -157,7 +157,10 @@ if [ ! -x "$UV" ]; then
 fi
 # --frozen: install uv.lock exactly, never silently re-resolve. The lock is what
 # makes an eval run reproducible (pyproject carries lower bounds only).
-(cd prelude && "$UV" sync --frozen)
+# --python 3.12: the repo's version (CLAUDE.md). Unpinned, uv takes the newest
+# CPython it can download, and on 2026-10-09 that was 3.15, for which locked
+# wheels (onnxruntime) did not yet exist — setup died before any image build.
+(cd prelude && "$UV" sync --frozen --python 3.12)
 
 # Run outputs (registry + artifacts + logs) belong on the mounted volume, not
 # the ephemeral boot disk: the queue/resume/abandon model needs the registry to
