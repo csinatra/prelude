@@ -31,7 +31,7 @@ pipeline stages, and prior art.
    - **Development iteration** — Claude Haiku (`claude-haiku-4-5-20251001`).
      Fast, cheap, good enough to validate pipeline shape.
    - **Evaluation runs** — the pinned `EVAL_MODEL` in `pipeline/config.py`
-     (`claude-sonnet-5`), chosen pre-run and recorded in
+     (`claude-sonnet-5-5`), chosen pre-run and recorded in
      docs/RESEARCH_DESIGN.md alongside the other pre-registered decisions.
      Only for the runs whose results go in the writeup.
    - Keep the model name in one place per module (a constant) so swapping

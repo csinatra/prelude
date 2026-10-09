@@ -137,10 +137,8 @@ echo random-acts-of-pizza > experiments/splits/random-acts-of-pizza.txt
 ```
 
 mle-bench takes a `--competition-set` file (one competition id per line), not a
-single `--competition` flag. The **agent-model question is resolved**
-(2026-07-22): the pin is `claude-haiku-4-5-20251001`, aideml v6.3.3 pristine —
-the 5-family/Opus-4.7+ reject `temperature` and Sonnet 5 defaults thinking on
-(breaking aideml's response parsing), while Haiku 4.5 runs it unmodified. See
+single `--competition` flag. The agent model is `claude-haiku-5-5` (2026-10-09),
+driven through the request-shape adapter in `patches/backend_anthropic.py`. See
 `cloudbox/agents/aide-prelude/config.yaml` and RESEARCH_DESIGN.md. Inspect the
 run's `run.log` under `runs/<group>/<comp>_<uuid>/`: a clean run gets past AIDE
 drafting into code execution across its 8 steps and lands a `submission.csv` +

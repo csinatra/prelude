@@ -20,7 +20,7 @@ would win and reinstate the stage mismatch this is meant to prevent. The box
 copies `.env.cloudbox.example` to `.env` instead.
 
 The real environment always wins (`override=False`), so a one-off
-`MODEL=claude-sonnet-5 python -m harness.runner ...` does what it says rather
+`MODEL=claude-sonnet-5-5 python -m harness.runner ...` does what it says rather
 than being overridden back to the `.env` value.
 
 That direction has a residual risk in the other direction: a variable exported

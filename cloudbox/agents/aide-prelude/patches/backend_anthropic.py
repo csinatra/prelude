@@ -1,7 +1,7 @@
 # PATCHED COPY of aideml v6.3.3 `aide/backend/backend_anthropic.py`
 # (github.com/thesofakillers/aideml @ v6.3.3, MIT — see ACKNOWLEDGMENTS.md).
 #
-# Three changes vs upstream, none of which alters AIDE's search/coding
+# Four changes vs upstream, none of which alters AIDE's search/coding
 # algorithm; the Dockerfile overlays this file onto the pip-installed aideml.
 #
 # (1) The `func_spec` path (resolved on-box 2026-07-23). Upstream leaves it as
@@ -34,6 +34,16 @@
 #     that way. It affects every condition (Condition A truncated 2 of 3 calls
 #     with no spec at all), so it is a scaffold bug rather than a treatment
 #     effect, and leaving it would put extraction luck in the measurement.
+#
+# (4) 5.5-family request shape (2026-10-09, agent moved to claude-haiku-5-5).
+#     `temperature` is dropped: aideml sends 0.5 and Haiku 5.5 accepts only 1.
+#     Adaptive thinking is on at an explicit effort, so the agent can reason over
+#     the Memory and diagnoses it is handed; it is the same for every condition,
+#     so it moves the operating point rather than the comparison (the spec
+#     pipeline keeps thinking off — see pipeline/llm_client.py). Both go through
+#     `extra_body` because aideml's pinned SDK predates the fields. Responses can
+#     now open with thinking blocks, so text and tool results are read by block
+#     type. The forced review tool call skips thinking on this model by design.
 """Backend for Anthropic API."""
 
 import json
@@ -72,6 +82,10 @@ def _log_token_usage(*, model, usage, t_start, t_end, stop_reason) -> None:
 
 _client: anthropic.Anthropic = None  # type: ignore
 
+# Haiku 5.5's default, pinned so a change of default cannot shift the agent
+# between runs.
+AGENT_EFFORT = "medium"
+
 ANTHROPIC_TIMEOUT_EXCEPTIONS = (
     anthropic.RateLimitError,
     anthropic.APIConnectionError,
@@ -99,8 +113,16 @@ def query(
     if "max_tokens" not in filtered_kwargs:
         # PRELUDE PATCH (3): was 4096 upstream. See the header note — that value
         # was Claude 3's ceiling, and it truncates real solutions into
-        # unparseable code. Sized to not bind on a full segmentation solution.
-        filtered_kwargs["max_tokens"] = 16384
+        # unparseable code. Sized to not bind on a full segmentation solution
+        # plus the thinking that now counts against the same cap (4).
+        filtered_kwargs["max_tokens"] = 32768
+
+    # PRELUDE PATCH (4): see the header note.
+    filtered_kwargs.pop("temperature", None)
+    filtered_kwargs["extra_body"] = {
+        "thinking": {"type": "adaptive"},
+        "output_config": {"effort": AGENT_EFFORT},
+    }
 
     # ── PRELUDE PATCH: function calling via Anthropic tool use ──────────────
     # Build a single tool from the FunctionSpec and force it with tool_choice,
@@ -143,8 +165,10 @@ def query(
         tool_use = next(block for block in message.content if block.type == "tool_use")
         output: OutputType = tool_use.input
     else:
-        assert len(message.content) == 1 and message.content[0].type == "text"
-        output = message.content[0].text
+        # PATCH (4): upstream asserted a single text block; thinking blocks now
+        # precede it. A refusal yields no text, which aideml treats as a failed
+        # step rather than a crashed run.
+        output = "".join(block.text for block in message.content if block.type == "text")
     # ── END PRELUDE PATCH ───────────────────────────────────────────────────
 
     in_tokens = message.usage.input_tokens

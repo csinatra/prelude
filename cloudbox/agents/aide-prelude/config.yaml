@@ -3,26 +3,17 @@
 # stock aide: start.sh appends /home/spec/spec.md (per-run harness output)
 # to the instructions when mounted; without the mount it is stock aide.
 #
-# Model choice: claude-haiku-4-5 for both code and feedback — ONE model
+# Model choice: claude-haiku-5-5 for both code and feedback — ONE model
 # pinned identically across the whole grid (A/B/C), the hard requirement.
-# Resolved on-box (2026-07-22): aideml@v6.3.3 (2024) cannot drive the
-# current top models unmodified. The 5-family and Opus 4.7/4.8 removed
-# `temperature` (aideml always sends it → HTTP 400), and Sonnet 5 defaults
-# adaptive thinking ON when `thinking` is omitted, so its responses carry a
-# thinking block + text and aideml's `assert len(content)==1 and
-# content[0].type=="text"` fails. Haiku 4.5 is the prior generation: it
-# accepts `temperature` and returns a single text block, so aideml's code path
-# runs against it unmodified. Two non-algorithmic fixes are applied: an httpx<0.28
-# pin in requirements.txt (environment fix for the 2024 anthropic SDK), and a
-# completion of aideml's Anthropic backend — upstream left the func_spec path as
-# `NotImplementedError`, so the AIDE feedback/review step (function calling) is
-# implemented via Anthropic tool use, reaching parity with aideml's OpenAI
-# backend (see patches/backend_anthropic.py; verified end-to-end on-box
-# 2026-07-23). Both keep the run single-provider on Claude. This is the AIDE
-# agent model; the spec pipeline uses a separate, stronger model
-# (EVAL_MODEL=claude-sonnet-5) — a deliberate advisor/executor split, see
-# RESEARCH_DESIGN.md. Rationale + the Sonnet-5-thinking-off adapter as a
-# future capability-sweep lever are recorded there and in DECISIONS.md.
+# aideml@v6.3.3 (2024) cannot drive 5-family models unmodified (it always sends
+# `temperature`, and their responses can open with thinking blocks), so the
+# request shape is adapted in patches/backend_anthropic.py, change (4), which
+# also turns adaptive thinking on for the agent. Haiku 4.5 ran it unmodified
+# and was the pin until 2026-10-09. The same overlay completes aideml's func_spec
+# path, so the review step runs on Claude too (single-provider). This is the
+# AIDE agent model; the spec pipeline uses a separate, stronger model
+# (EVAL_MODEL=claude-sonnet-5-5) — a deliberate advisor/executor split, see
+# RESEARCH_DESIGN.md and DECISIONS.md.
 
 # Budget. MLE-bench's reference is 500 steps / 24h; this is the CALIBRATION
 # setting, deliberately below it so one run fits a working day. The eval budget
@@ -74,8 +65,8 @@ aide-prelude:
   <<: *defaults
   kwargs:
     <<: *kwargs_common
-    agent.code.model: claude-haiku-4-5-20251001
-    agent.feedback.model: claude-haiku-4-5-20251001
+    agent.code.model: claude-haiku-5-5
+    agent.feedback.model: claude-haiku-5-5
     agent.steps: *step_count
   env_vars:
     <<: *env_vars
@@ -84,8 +75,8 @@ aide-prelude/dev: # smoke-test variant: 8 steps, same wiring
   <<: *defaults
   kwargs:
     <<: *kwargs_common
-    agent.code.model: claude-haiku-4-5-20251001
-    agent.feedback.model: claude-haiku-4-5-20251001
+    agent.code.model: claude-haiku-5-5
+    agent.feedback.model: claude-haiku-5-5
     agent.steps: 8
   env_vars:
     <<: *env_vars

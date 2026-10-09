@@ -38,6 +38,25 @@ _anthropic_client = anthropic.Anthropic() if LLM_PROVIDER == "anthropic" else No
 # on the same code path, did not. (See DECISIONS.md.)
 _THINKING = {"type": "disabled"}
 
+# Sonnet 5.5 rejects `disabled` (400) and spells the same setting
+# `between_tools` — no extended thinking — which every other model rejects. So
+# the pin is resolved per model: one setting, two spellings.
+_THINKING_BY_MODEL = {"claude-sonnet-5-5": {"type": "between_tools"}}
+
+
+def _thinking(*, model: str) -> dict:
+    return _THINKING_BY_MODEL.get(model, _THINKING)
+
+
+def _raise_if_refused(*, response: anthropic.types.Message) -> None:
+    """5.5-family safety classifiers can decline (HTTP 200, stop_reason "refusal").
+
+    Unchecked, the structured path fails as an opaque parse error and the
+    freeform path ships whatever partial text came back as a spec.
+    """
+    if response.stop_reason == "refusal":
+        raise RuntimeError(f"{response.model} declined the request: {getattr(response, 'stop_details', None)}")
+
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 # Process-local usage ledger, reset/read by callers (harness.runner wraps
@@ -166,8 +185,9 @@ def call_llm_text(
         max_tokens=max_tokens,
         system=system,
         messages=[{"role": "user", "content": user}],
-        thinking=_THINKING,
+        thinking=_thinking(model=resolved_model),
     )
+    _raise_if_refused(response=response)
     # Freeform truncation is SILENT without this: no schema means nothing fails
     # to parse, so a capped B2/C1 synthesis would ship as a spec that stops
     # mid-sentence. Since the structured path raises on the same condition, the
@@ -195,8 +215,9 @@ def _call_anthropic(*, system: str, user: str, response_model: type[ModelT], max
         system=system,
         messages=[{"role": "user", "content": user}],
         output_format=response_model,
-        thinking=_THINKING,
+        thinking=_thinking(model=model),
     )
+    _raise_if_refused(response=response)
     # Say what actually went wrong. A response cut off at the cap is still valid
     # JSON-so-far, so pydantic reports "EOF while parsing a string" from deep in
     # the SDK — which reads like a malformed schema rather than a budget that was

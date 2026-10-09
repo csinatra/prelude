@@ -480,40 +480,41 @@ Design notes:
   mismatch the H1 amendment corrected.
 - **Two model roles, pinned separately (a deliberate advisor/executor
   split).** The *spec pipeline* — C's staged retrieval, decomposition, and
-  opinionated recommendations — runs on `EVAL_MODEL = claude-sonnet-5`
-  (`pipeline/config.py`, pinned 2026-07-19), a strong reasoner; its output is
-  identical whether the downstream agent is weak or strong. The *AIDE agent*
-  that consumes the injected spec runs on `claude-haiku-4-5-20251001`
-  (resolved 2026-07-22). Using different models for "author the specification"
+  opinionated recommendations — runs on `EVAL_MODEL = claude-sonnet-5-5`
+  (`pipeline/config.py`, pinned 2026-07-19, moved to 5.5 on 2026-10-09), a
+  strong reasoner; its output is identical whether the downstream agent is weak
+  or strong. The *AIDE agent* that consumes the injected spec runs on
+  `claude-haiku-5-5` (2026-10-09; Haiku 4.5 before). Using different models for "author the specification"
   and "implement against it" is a standard, realistic architecture, not a
   compromise — and both models are held constant across A/B/C, so the split
   cannot confound the B-vs-C comparison. The agent-model choice therefore
   bears **only on the secondary (downstream MLE-bench) signal**, never on the
   primary mechanistic spec-quality judging, which scores the specs directly
   and is agent-independent.
-- **Why Haiku for the agent (2026-07-22).** The pinned agent is
+- **Why Haiku 5.5 for the agent (2026-10-09).** The pinned agent is
   `thesofakillers/aideml@v6.3.3` (mle-bench's designated fork, 2024), which
-  cannot drive the current top models unmodified: the 5-family and Opus
-  4.7/4.8 removed the `temperature` parameter aideml always sends (HTTP 400),
-  and Sonnet 5 defaults adaptive thinking ON when `thinking` is omitted, so
-  its responses carry a thinking block that trips aideml's single-text-block
-  assertion. Haiku 4.5 (prior generation) accepts `temperature` and returns a
-  single text block, so aideml's code path runs unmodified. Two non-algorithmic
-  fixes are applied (verified end-to-end on-box 2026-07-23): an httpx<0.28
-  environment pin, and a completion of aideml's Anthropic backend — upstream
-  left the function-calling (`func_spec`) path as `NotImplementedError` (which
-  is why mle-bench's own aide/claude pairs an Anthropic code model with a gpt-4o
-  feedback model), so the AIDE review step is implemented via Anthropic tool use
-  to reach parity with aideml's OpenAI backend, keeping the run single-provider
-  on Claude. Haiku keeps the strongest fidelity story and the lowest per-run cost.
+  cannot drive 5-family models unmodified: it always sends `temperature`
+  (rejected), and their responses can open with thinking blocks. Haiku 4.5 ran
+  it unmodified and was the pin from 2026-07-22. The 5.5 generation keeps the
+  advisor/executor split at current capability, and Haiku 5.5 costs about a
+  tenth of Haiku 4.5 per token, which is what makes a longer per-run budget
+  affordable. The request shape is adapted in aideml's Anthropic backend, which
+  we already overlay to complete its function-calling (`func_spec`) path —
+  upstream left it `NotImplementedError`, which is why mle-bench's own
+  aide/claude pairs an Anthropic code model with a gpt-4o feedback model.
+- **Thinking: off for the spec pipeline, on for the agent.** Spec-side thinking
+  would let each condition draw its own reasoning compute (C2's staged calls vs
+  B2's single pass), confounding structure with inference budget; it is pinned
+  off (`pipeline/llm_client.py`). The agent is identical in every condition, so
+  its adaptive thinking moves the operating point, not the comparison. Whether
+  structure still helps a spec model that thinks is a **v1.5 ablation**, not
+  the main grid.
 - **Agent capability × structure is a generalizability caveat, not a
-  confound.** The downstream C-vs-B gap is measured at Haiku's capability
-  point; whether that gap widens or narrows with a stronger agent is
+  confound.** The downstream C-vs-B gap is measured at the pinned agent's
+  capability point; whether that gap widens or narrows with a stronger agent is
   theoretically ambiguous (structure-substitution at the strong end vs
   execution-gating at the weak end) and is **future work** — a capability
-  sweep (Haiku → Sonnet-5-thinking-off → Sonnet-5-thinking-on) directly probes
-  it. The Sonnet-5 path is a bounded one-switch adapter (`thinking: disabled`
-  + drop `temperature`), reserved for that sweep, not the default arm.
+  sweep over the agent model directly probes it.
 
 ## Corpus construction
 

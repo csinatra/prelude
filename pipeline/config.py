@@ -20,7 +20,7 @@ import os
 # go in the writeup; dev iteration stays on Haiku. Distinct from the AIDE
 # agent model (cloudbox/agents/aide-prelude/config.yaml), which has its
 # own pin.
-EVAL_MODEL = "claude-sonnet-5"
+EVAL_MODEL = "claude-sonnet-5-5"
 
 # ── Collections ─────────────────────────────────────────────────────
 COMPETITION_METADATA = "competition_metadata"
