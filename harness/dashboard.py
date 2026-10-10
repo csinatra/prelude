@@ -48,10 +48,13 @@ FOLLOW_COMMANDS = f"""\
 # what the agent is doing (from the box)
 docker exec $(docker ps -q --filter name=competition-) tail -f {LOGS_DIR}/aide.log
 
+# what the running node is printing — losses, progress — as it runs
+docker exec $(docker ps -q --filter name=competition-) tail -f {LOGS_DIR}/node_output.log
+
 # why a node came back buggy — tracebacks and full model responses
 docker exec $(docker ps -q --filter name=competition-) tail -f {LOGS_DIR}/aide.verbose.log
 
-# either of the above from the laptop; -t so ctrl-c reaches the tail
+# any of the above from the laptop; -t so ctrl-c reaches the tail
 ssh -t <box> 'docker exec $(docker ps -q --filter name=competition-) tail -f {LOGS_DIR}/aide.log'"""
 
 
