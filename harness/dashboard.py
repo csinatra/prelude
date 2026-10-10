@@ -236,7 +236,15 @@ def _node_rows(*, nodes: list[dict]) -> str:
         value, _ = _node_metric(node=node)
         buggy = bool(node.get("is_buggy"))
         code = (node.get("code") or "")[:CODE_CHARS]
-        summary = (node.get("analysis") or node.get("plan") or "").strip()
+        analysis = (node.get("analysis") or "").strip()
+        summary = analysis or (node.get("plan") or "").strip()
+        key = node.get("id") or index
+        full_analysis = (
+            f'<details data-key="analysis-{key}"><summary>full analysis</summary>'
+            f'<div class="analysis">{html.escape(analysis)}</div></details>'
+            if analysis
+            else ""
+        )
         rows.append(
             f"""<tr class="{'buggy' if buggy else 'ok'}">
     <td>{node.get('step', index)}</td>
@@ -245,7 +253,7 @@ def _node_rows(*, nodes: list[dict]) -> str:
     <td class="num">{_fmt(node.get('exec_time'), 1)}s</td>
     <td class="wrap">{html.escape(summary[:400])}</td>
   </tr>
-  <tr class="code-row"><td colspan="5"><details><summary>solution</summary>
+  <tr class="code-row"><td colspan="5">{full_analysis}<details data-key="code-{key}"><summary>solution</summary>
     <pre>{html.escape(code)}</pre></details></td></tr>"""
         )
     return "\n".join(rows) or '<tr><td colspan="5">No nodes yet.</td></tr>'
@@ -284,7 +292,7 @@ def _live_block(*, live: dict) -> str:
     return f"""<h2>Live</h2>
 <div class="meta">{live['calls']} agent calls so far{warn}</div>
 <pre class="tail">{html.escape(live['aide_log']) or '(no aide.log yet)'}</pre>
-<details><summary>verbose log — last {VERBOSE_LINES} lines (tracebacks, model responses)</summary>
+<details data-key="verbose-log"><summary>verbose log — last {VERBOSE_LINES} lines (tracebacks, model responses)</summary>
 <pre class="tail">{html.escape(live['verbose_log']) or '(no aide.verbose.log yet)'}</pre></details>"""
 
 
@@ -312,6 +320,7 @@ def render(*, state: dict) -> str:
  tr.code-row td {{ border-bottom: 2px solid #e6e6e3; }}
  pre {{ background: #f4f4f1; padding: .6rem; overflow-x: auto; max-height: 22rem; }}
  summary {{ cursor: pointer; color: #6b6b68; }}
+ .analysis {{ white-space: pre-wrap; max-width: 100ch; padding: .4rem .6rem; }}
  .warn {{ color: #a3341f; }}
 </style>
 <h1>prelude — {html.escape(str(queue['stage']))}{stalled}</h1>
@@ -352,6 +361,19 @@ def render(*, state: dict) -> str:
  // a stalled run. Scroll each one to its end after the page renders.
  for (const pane of document.querySelectorAll('pre.tail')) {{
    pane.scrollTop = pane.scrollHeight;
+ }}
+ // The 30s refresh is a full reload, which would close every open dropdown
+ // mid-read. Remember which are open for this tab and reopen them.
+ const OPEN_KEY = 'prelude-open-details';
+ let open;
+ try {{ open = new Set(JSON.parse(sessionStorage.getItem(OPEN_KEY) || '[]')); }}
+ catch (e) {{ open = new Set(); }}
+ for (const d of document.querySelectorAll('details[data-key]')) {{
+   if (open.has(d.dataset.key)) d.open = true;
+   d.addEventListener('toggle', () => {{
+     d.open ? open.add(d.dataset.key) : open.delete(d.dataset.key);
+     try {{ sessionStorage.setItem(OPEN_KEY, JSON.stringify([...open])); }} catch (e) {{}}
+   }});
  }}
 </script>
 """
