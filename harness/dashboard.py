@@ -236,24 +236,17 @@ def _node_rows(*, nodes: list[dict]) -> str:
         value, _ = _node_metric(node=node)
         buggy = bool(node.get("is_buggy"))
         code = (node.get("code") or "")[:CODE_CHARS]
-        analysis = (node.get("analysis") or "").strip()
-        summary = analysis or (node.get("plan") or "").strip()
+        summary = (node.get("analysis") or node.get("plan") or "").strip()
         key = node.get("id") or index
-        full_analysis = (
-            f'<details data-key="analysis-{key}"><summary>full analysis</summary>'
-            f'<div class="analysis">{html.escape(analysis)}</div></details>'
-            if analysis
-            else ""
-        )
         rows.append(
             f"""<tr class="{'buggy' if buggy else 'ok'}">
     <td>{node.get('step', index)}</td>
     <td>{'buggy' if buggy else 'ok'}</td>
     <td class="num">{_fmt(value)}</td>
     <td class="num">{_fmt(node.get('exec_time'), 1)}s</td>
-    <td class="wrap">{html.escape(summary[:400])}</td>
+    <td class="wrap analysis">{html.escape(summary)}</td>
   </tr>
-  <tr class="code-row"><td colspan="5">{full_analysis}<details data-key="code-{key}"><summary>solution</summary>
+  <tr class="code-row"><td colspan="5"><details data-key="code-{key}"><summary>solution</summary>
     <pre>{html.escape(code)}</pre></details></td></tr>"""
         )
     return "\n".join(rows) or '<tr><td colspan="5">No nodes yet.</td></tr>'
@@ -320,7 +313,7 @@ def render(*, state: dict) -> str:
  tr.code-row td {{ border-bottom: 2px solid #e6e6e3; }}
  pre {{ background: #f4f4f1; padding: .6rem; overflow-x: auto; max-height: 22rem; }}
  summary {{ cursor: pointer; color: #6b6b68; }}
- .analysis {{ white-space: pre-wrap; max-width: 100ch; padding: .4rem .6rem; }}
+ .analysis {{ max-width: 100ch; white-space: pre-wrap; }}
  .warn {{ color: #a3341f; }}
 </style>
 <h1>prelude — {html.escape(str(queue['stage']))}{stalled}</h1>
