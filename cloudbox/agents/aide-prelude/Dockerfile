@@ -125,6 +125,10 @@ RUN conda run -n ${CONDA_ENV_NAME} python -c \
 # this is a design change rather than a bug fix.
 RUN conda run -n ${CONDA_ENV_NAME} python ${AGENT_DIR}/patches/journal_failure_memory.py
 
+# Observability only: tee each node's output to $LOGS_DIR/node_output.log as it
+# is written, since aideml surfaces it only when the node finishes.
+RUN conda run -n ${CONDA_ENV_NAME} python ${AGENT_DIR}/patches/node_output_log.py
+
 # The grading server's own mlebench (the agent's validation endpoint) gets the
 # same grader-alignment patch as the host checkout, so the two never disagree.
 # Grading-side, not an aideml change — see the script for why.
