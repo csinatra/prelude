@@ -129,6 +129,10 @@ RUN conda run -n ${CONDA_ENV_NAME} python ${AGENT_DIR}/patches/journal_failure_m
 # is written, since aideml surfaces it only when the node finishes.
 RUN conda run -n ${CONDA_ENV_NAME} python ${AGENT_DIR}/patches/node_output_log.py
 
+# A crash in the step loop must end the run, not leave it idling on the GPU
+# until the wall-clock timeout — see the script for the deadlock it closes.
+RUN conda run -n ${CONDA_ENV_NAME} python ${AGENT_DIR}/patches/run_cleanup_on_exit.py
+
 # The grading server's own mlebench (the agent's validation endpoint) gets the
 # same grader-alignment patch as the host checkout, so the two never disagree.
 # Grading-side, not an aideml change — see the script for why.
