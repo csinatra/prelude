@@ -52,8 +52,15 @@
 #     call is re-sent up to REVIEW_ATTEMPTS times, each logged with the missing
 #     fields; if none comes back whole, missing fields are null, which aideml
 #     already reads as "no metric" (a buggy node) rather than a crashed run.
+#
+# (6) The review tool is strict (2026-10-12): the API constrains the call to its
+#     schema, so a required field can no longer be swallowed by leaked markup —
+#     the cause (5) only retries around. `metric` is widened to number-or-null
+#     so a run with no score still reports null and stays a buggy node (see
+#     `_strict_schema`). (5) remains for refusals, which can break the schema.
 """Backend for Anthropic API."""
 
+import copy
 import json
 import os
 import time
@@ -98,6 +105,23 @@ AGENT_EFFORT = "medium"
 
 # PATCH (5): total tries for a review call missing a required field.
 REVIEW_ATTEMPTS = 3
+
+
+def _strict_schema(*, schema: dict) -> dict:
+    """PATCH (6): aideml's schema, made valid for strict decoding.
+
+    Strict mode needs `additionalProperties: false`. And aideml types `metric` as
+    a plain number while its description says to leave it null when there is no
+    score; under strict decoding a plain number would force an invented value,
+    so it is widened to number-or-null — the null aideml reads as a buggy node.
+    """
+    strict = copy.deepcopy(schema)
+    strict["additionalProperties"] = False
+    metric = strict.get("properties", {}).get("metric")
+    if metric is not None and metric.get("type") == "number":
+        metric.pop("type")
+        metric["anyOf"] = [{"type": "number"}, {"type": "null"}]
+    return strict
 
 ANTHROPIC_TIMEOUT_EXCEPTIONS = (
     anthropic.RateLimitError,
@@ -146,7 +170,8 @@ def query(
             {
                 "name": func_spec.name,
                 "description": func_spec.description,
-                "input_schema": func_spec.json_schema,
+                "input_schema": _strict_schema(schema=func_spec.json_schema),
+                "strict": True,  # PATCH (6)
             }
         ]
         filtered_kwargs["tool_choice"] = {"type": "tool", "name": func_spec.name}
