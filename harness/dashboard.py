@@ -48,8 +48,9 @@ FOLLOW_COMMANDS = f"""\
 # what the agent is doing (from the box)
 docker exec $(docker ps -q --filter name=competition-) tail -f {LOGS_DIR}/aide.log
 
-# what the running node is printing — losses, progress — as it runs
-docker exec $(docker ps -q --filter name=competition-) tail -f {LOGS_DIR}/node_output.log
+# what the running node is printing — losses, progress — as it runs; scrollable:
+# ctrl-c stops following to scroll, F resumes, q quits (-it: less needs a terminal)
+docker exec -it $(docker ps -q --filter name=competition-) less +F {LOGS_DIR}/node_output.log
 
 # why a node came back buggy — tracebacks and full model responses
 docker exec $(docker ps -q --filter name=competition-) tail -f {LOGS_DIR}/aide.verbose.log
