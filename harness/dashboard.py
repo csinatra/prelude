@@ -142,9 +142,28 @@ def live_progress(*, container: str | None) -> dict:
     return {
         "aide_log": "\n".join(log.splitlines()[-25:]),
         "verbose_log": "\n".join(verbose.splitlines()[-VERBOSE_LINES:]),
+        "prompt": latest_prompt_from_memory(verbose=verbose),
         "calls": calls,
         "truncated": truncated,
     }
+
+
+def latest_prompt_from_memory(*, verbose: str) -> str:
+    """The prompt that produced the current node, from its Memory section on.
+
+    Skips the task description that precedes Memory (long, and identical every
+    step) and keeps what changes: Memory with its failure entries, the parent's
+    code/output/diagnosis on a debug step, and the instructions carrying
+    TOTAL_TIME_REMAINING / TOTAL_STEPS_REMAINING. The prompt is one log record,
+    so it ends at the next timestamped line. Review prompts have no Memory, so
+    this always lands on the latest draft/debug/improve prompt.
+    """
+    lines = verbose.splitlines()
+    starts = [i for i, line in enumerate(lines) if line.strip() == "# Memory"]
+    if not starts:
+        return ""
+    end = next((i for i in range(starts[-1] + 1, len(lines)) if lines[i].startswith("[20")), len(lines))
+    return "\n".join(lines[starts[-1]:end])
 
 
 def host_metrics() -> dict:
@@ -286,6 +305,8 @@ def _live_block(*, live: dict) -> str:
     return f"""<h2>Live</h2>
 <div class="meta">{live['calls']} agent calls so far{warn}</div>
 <pre class="tail">{html.escape(live['aide_log']) or '(no aide.log yet)'}</pre>
+<details data-key="current-prompt"><summary>current node's prompt — Memory onward (failures, parent node, time/steps remaining)</summary>
+<pre class="prompt">{html.escape(live['prompt']) or '(no draft/debug/improve prompt yet)'}</pre></details>
 <details data-key="verbose-log"><summary>verbose log — last {VERBOSE_LINES} lines (tracebacks, model responses)</summary>
 <pre class="tail">{html.escape(live['verbose_log']) or '(no aide.verbose.log yet)'}</pre></details>"""
 
@@ -315,6 +336,7 @@ def render(*, state: dict) -> str:
  pre {{ background: #f4f4f1; padding: .6rem; overflow-x: auto; max-height: 22rem; }}
  summary {{ cursor: pointer; color: #6b6b68; }}
  .analysis {{ max-width: 100ch; white-space: pre-wrap; }}
+ pre.prompt {{ max-height: 40rem; white-space: pre-wrap; }}
  .warn {{ color: #a3341f; }}
 </style>
 <h1>prelude — {html.escape(str(queue['stage']))}{stalled}</h1>
